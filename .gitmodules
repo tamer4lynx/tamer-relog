@@ -4,3 +4,9 @@
 [submodule "packages/lynxwebsockets"]
 	path = packages/lynxwebsockets
 	url = https://github.com/nanofuxion/lynxwebsockets
+[submodule "packages/tamer-dev-app"]
+	path = packages/tamer-dev-app
+	url = https://github.com/nanofuxion/tamer-dev-app.git
+[submodule "packages/tamer-dev-client"]
+	path = packages/tamer-dev-client
+	url = https://github.com/nanofuxion/tamer-dev-client.git
