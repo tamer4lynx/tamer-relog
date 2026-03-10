@@ -2,7 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { loadExtensionConfig, hasExtensionConfig, type NormalizedExtensionConfig } from '../common/config';
 import { resolveHostPaths } from '../common/hostConfig';
-import { getLynxExplorerInputSource } from './coreElements';
+import {
+    getLynxExplorerInputSource,
+    getScreenElementSource,
+    getSafeAreaElementSource,
+    getAvoidKeyboardElementSource,
+    getAppBarElementSource,
+} from './coreElements';
 
 const autolink = () => {
     interface DiscoveredPackage {
@@ -190,7 +196,11 @@ const autolink = () => {
             }))
             .filter(p => Object.keys(p.config.android?.elements ?? {}).length > 0);
 
-        const coreElementImport = `import ${projectPackage}.core.LynxExplorerInput`;
+        const coreElementImport = `import ${projectPackage}.core.LynxExplorerInput
+import ${projectPackage}.core.ScreenElement
+import ${projectPackage}.core.SafeAreaElement
+import ${projectPackage}.core.AvoidKeyboardElement
+import ${projectPackage}.core.AppBarElement`;
         const coreElementRegistration = `        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("input") {
             override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
                 return LynxExplorerInput(context)
@@ -199,6 +209,26 @@ const autolink = () => {
         LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("explorer-input") {
             override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
                 return LynxExplorerInput(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("screen") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return ScreenElement(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("safe-area") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return SafeAreaElement(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("avoid-keyboard") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return AvoidKeyboardElement(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("app-bar") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return AppBarElement(context)
             }
         })`;
 
@@ -272,10 +302,13 @@ ${allRegistrations}
         updateAppBuildGradle(packages);
 
         const coreDir = path.join(appAndroidPath, 'app', 'src', 'main', 'kotlin', packageName.replace(/\./g, '/'), 'core');
-        const coreElementPath = path.join(coreDir, 'LynxExplorerInput.kt');
         fs.mkdirSync(coreDir, { recursive: true });
-        fs.writeFileSync(coreElementPath, getLynxExplorerInputSource(packageName));
-        console.log('✅ Synced core input/explorer-input element');
+        fs.writeFileSync(path.join(coreDir, 'LynxExplorerInput.kt'), getLynxExplorerInputSource(packageName));
+        fs.writeFileSync(path.join(coreDir, 'ScreenElement.kt'), getScreenElementSource(packageName));
+        fs.writeFileSync(path.join(coreDir, 'SafeAreaElement.kt'), getSafeAreaElementSource(packageName));
+        fs.writeFileSync(path.join(coreDir, 'AvoidKeyboardElement.kt'), getAvoidKeyboardElementSource(packageName));
+        fs.writeFileSync(path.join(coreDir, 'AppBarElement.kt'), getAppBarElementSource(packageName));
+        console.log('✅ Synced core elements (input, explorer-input, screen, safe-area, avoid-keyboard, app-bar)');
 
         generateKotlinExtensionsFile(packages, packageName);
 

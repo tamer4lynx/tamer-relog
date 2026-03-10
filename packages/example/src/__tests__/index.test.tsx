@@ -42,7 +42,7 @@ test('App', async () => {
             >
               <image
                 class="Logo--lynx"
-                src="/src/assets/lynx-logo.png"
+                src="data:image/png;base64,V9OPG+n2crqN5DZNt..."
               />
             </view>
             <text
@@ -59,26 +59,12 @@ test('App', async () => {
           <view
             class="Content"
           >
-            <image
-              class="Arrow"
-              src="/src/assets/arrow.png"
-            />
             <text
               class="Description"
             >
-              Tap the logo and have fun!
+              Server Messages:
             </text>
-            <text
-              class="Hint"
-            >
-              Edit
-              <text
-                style="font-style:italic;color:rgba(255, 255, 255, 0.85)"
-              >
-                 src/App.tsx 
-              </text>
-              to see updates!
-            </text>
+            <wrapper />
           </view>
           <view
             style="flex:1"
@@ -90,13 +76,13 @@ test('App', async () => {
   const {
     findByText,
   } = getQueriesForElement(elementTree.root!)
-  const element = await findByText('Tap the logo and have fun!')
+  const element = await findByText('Server Messages:')
   expect(element).toBeInTheDocument()
   expect(element).toMatchInlineSnapshot(`
     <text
       class="Description"
     >
-      Tap the logo and have fun!
+      Server Messages:
     </text>
   `)
 })

@@ -38,7 +38,7 @@ async function syncDevClient() {
       }
     : undefined;
 
-  const vars = { packageName, appName, devMode, devServer };
+  const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.lynxProjectDir };
 
   const [templateProviderSource] = await Promise.all([
     fetchAndPatchTemplateProvider(vars),

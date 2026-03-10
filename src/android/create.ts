@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { setupGradleWrapper } from "./getGradle";
-import { loadHostConfig, resolveDevMode, resolveIconPaths } from "../common/hostConfig";
+import { loadHostConfig, resolveDevMode, resolveHostPaths, resolveIconPaths } from "../common/hostConfig";
 import {
   fetchAndPatchApplication,
   fetchAndPatchTemplateProvider,
@@ -400,7 +400,8 @@ object GeneratedLynxExtensions {
           port: config.devServer.port ?? config.devServer.httpPort ?? 3000,
         }
       : undefined;
-    const vars = { packageName, appName, devMode, devServer };
+    const resolved = resolveHostPaths(process.cwd());
+    const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.lynxProjectDir };
     const [applicationSource, templateProviderSource] = await Promise.all([
       fetchAndPatchApplication(vars),
       fetchAndPatchTemplateProvider(vars),

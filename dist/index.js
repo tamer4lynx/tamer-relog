@@ -9,8 +9,8 @@ import { program } from "commander";
 var version = "0.0.1";
 
 // src/android/create.ts
-import fs3 from "fs";
-import path3 from "path";
+import fs4 from "fs";
+import path4 from "path";
 import os2 from "os";
 
 // src/android/getGradle.ts
@@ -309,6 +309,107 @@ function resolveDevAppPaths(repoRoot) {
   };
 }
 
+// src/common/config.ts
+import fs3 from "fs";
+import path3 from "path";
+var LYNX_EXT_JSON = "lynx.ext.json";
+var TAMER_JSON = "tamer.json";
+function loadLynxExtJson(packagePath) {
+  const p = path3.join(packagePath, LYNX_EXT_JSON);
+  if (!fs3.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs3.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function loadTamerJson(packagePath) {
+  const p = path3.join(packagePath, TAMER_JSON);
+  if (!fs3.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs3.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function loadExtensionConfig(packagePath) {
+  const lynxExt = loadLynxExtJson(packagePath);
+  const tamer = loadTamerJson(packagePath);
+  const raw = lynxExt ?? tamer;
+  if (!raw) return null;
+  const normalized = {};
+  if (raw.platforms?.android || raw.android) {
+    const a = raw.platforms?.android ?? raw.android;
+    const moduleClassName = a?.moduleClassName ?? raw.android?.moduleClassName;
+    const elements = a?.elements ?? raw.android?.elements;
+    const permissions = a?.permissions ?? raw.android?.permissions;
+    if (moduleClassName || elements || permissions) {
+      normalized.android = {
+        ...moduleClassName && { moduleClassName },
+        sourceDir: a?.sourceDir ?? raw.android?.sourceDir ?? "android",
+        ...elements && Object.keys(elements).length > 0 && { elements },
+        ...permissions && Array.isArray(permissions) && permissions.length > 0 && { permissions }
+      };
+    }
+  }
+  if (raw.platforms?.ios || raw.ios) {
+    const i = raw.platforms?.ios ?? raw.ios;
+    const moduleClassName = i?.moduleClassName ?? raw.ios?.moduleClassName;
+    if (moduleClassName) {
+      normalized.ios = {
+        moduleClassName,
+        podspecPath: i?.podspecPath ?? raw.ios?.podspecPath ?? "."
+      };
+    }
+  }
+  if (Object.keys(normalized).length === 0) return null;
+  return normalized;
+}
+function hasExtensionConfig(packagePath) {
+  return fs3.existsSync(path3.join(packagePath, LYNX_EXT_JSON)) || fs3.existsSync(path3.join(packagePath, TAMER_JSON));
+}
+function getNodeModulesPath(projectRoot) {
+  let nodeModulesPath = path3.join(projectRoot, "node_modules");
+  const workspaceRoot = path3.join(projectRoot, "..", "..");
+  const rootNodeModules = path3.join(workspaceRoot, "node_modules");
+  if (fs3.existsSync(path3.join(workspaceRoot, "package.json")) && fs3.existsSync(rootNodeModules) && path3.basename(path3.dirname(projectRoot)) === "packages") {
+    nodeModulesPath = rootNodeModules;
+  } else if (!fs3.existsSync(nodeModulesPath)) {
+    const altRoot = path3.join(projectRoot, "..", "..");
+    const altNodeModules = path3.join(altRoot, "node_modules");
+    if (fs3.existsSync(path3.join(altRoot, "package.json")) && fs3.existsSync(altNodeModules)) {
+      nodeModulesPath = altNodeModules;
+    }
+  }
+  return nodeModulesPath;
+}
+function discoverNativeExtensions(projectRoot) {
+  const nodeModulesPath = getNodeModulesPath(projectRoot);
+  const result = [];
+  if (!fs3.existsSync(nodeModulesPath)) return result;
+  const packageDirs = fs3.readdirSync(nodeModulesPath);
+  const check = (name, packagePath) => {
+    if (!hasExtensionConfig(packagePath)) return;
+    const config = loadExtensionConfig(packagePath);
+    const className = config?.android?.moduleClassName;
+    if (className) result.push({ packageName: name, moduleClassName: className });
+  };
+  for (const dirName of packageDirs) {
+    const fullPath = path3.join(nodeModulesPath, dirName);
+    if (dirName.startsWith("@")) {
+      try {
+        for (const scopedDirName of fs3.readdirSync(fullPath)) {
+          check(`${dirName}/${scopedDirName}`, path3.join(fullPath, scopedDirName));
+        }
+      } catch {
+      }
+    } else {
+      check(dirName, fullPath);
+    }
+  }
+  return result;
+}
+
 // src/explorer/ref.ts
 var LYNX_RAW_BASE = "https://raw.githubusercontent.com/lynx-family/lynx/develop/explorer";
 async function fetchExplorerFile(relativePath) {
@@ -524,6 +625,8 @@ class DevClientManager(private val context: Context, private val onReload: Runna
 }
 function getProjectActivity(vars) {
   const hasDevClient = vars.devMode === "embedded";
+  const extensions = vars.projectRoot ? discoverNativeExtensions(vars.projectRoot) : [];
+  const hasTamerInsets = extensions.some((e) => e.packageName === "tamer-insets");
   const devClientInit = hasDevClient ? `
         devClientManager = DevClientManager(this) { lynxView?.renderTemplateUrl("main.lynx.bundle", "") }
         devClientManager?.connect()
@@ -535,17 +638,33 @@ function getProjectActivity(vars) {
 ` : "";
   const devClientImports = hasDevClient ? `
 import ${vars.packageName}.DevClientManager` : "";
+  const routerImport = `
+import com.nanofuxion.tamerrouter.TamerRouterNativeModule`;
+  const insetsImport = hasTamerInsets ? `
+import com.nanofuxion.tamerinsets.TamerInsetsModule` : "";
+  const insetsAttach = hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(lynxView)` : "";
+  const insetsDetach = hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(null)` : "";
+  const insetsListenerBlock = hasTamerInsets ? "" : `
+        ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
+            insets
+        }`;
+  const insetsImports = hasTamerInsets ? "" : `
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
+import androidx.core.view.ViewCompat`;
   return `package ${vars.packageName}
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.updatePadding
-import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsControllerCompat${insetsImports}
 import com.lynx.tasm.LynxView
-import com.lynx.tasm.LynxViewBuilder${devClientImports}
+import com.lynx.tasm.LynxViewBuilder${devClientImports}${routerImport}${insetsImport}
 
 class ProjectActivity : AppCompatActivity() {
     private var lynxView: LynxView? = null
@@ -555,17 +674,22 @@ ${devClientField}
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         lynxView = buildLynxView()
-        setContentView(lynxView)
-        ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
-            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
-            insets
-        }
+        setContentView(lynxView)${insetsListenerBlock}
+        TamerRouterNativeModule.attachHostView(lynxView)${insetsAttach}
         lynxView?.renderTemplateUrl("main.lynx.bundle", "")${devClientInit}
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        TamerRouterNativeModule.requestBack { consumed ->
+            if (!consumed) {
+                runOnUiThread { super.onBackPressed() }
+            }
+        }
+    }
+
     override fun onDestroy() {
+        TamerRouterNativeModule.attachHostView(null)${insetsDetach}
         lynxView?.destroy()
         lynxView = null${devClientCleanup}
         super.onDestroy()
@@ -838,21 +962,91 @@ class LynxExplorerInput(context: LynxContext) : LynxUI<AppCompatEditText>(contex
 }
 `;
 }
+var CORE_VIEW_IMPORTS = `import android.content.Context
+import android.view.View
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import com.lynx.tasm.behavior.LynxContext
+import com.lynx.tasm.behavior.ui.LynxUI`;
+function getScreenElementSource(packageName) {
+  return `package ${packageName}.core
+${CORE_VIEW_IMPORTS}
+
+class ScreenElement(context: LynxContext) : LynxUI<View>(context) {
+    override fun createView(context: Context): View = View(context)
+}
+`;
+}
+function getSafeAreaElementSource(packageName) {
+  return `package ${packageName}.core
+${CORE_VIEW_IMPORTS}
+
+class SafeAreaElement(context: LynxContext) : LynxUI<View>(context) {
+    override fun createView(context: Context): View {
+        return View(context).apply {
+            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
+                val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+                insets
+            }
+            requestApplyInsets()
+        }
+    }
+}
+`;
+}
+function getAvoidKeyboardElementSource(packageName) {
+  return `package ${packageName}.core
+${CORE_VIEW_IMPORTS}
+
+class AvoidKeyboardElement(context: LynxContext) : LynxUI<View>(context) {
+    override fun createView(context: Context): View {
+        return View(context).apply {
+            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
+                val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+                v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, ime.bottom)
+                insets
+            }
+            requestApplyInsets()
+        }
+    }
+}
+`;
+}
+function getAppBarElementSource(packageName) {
+  return `package ${packageName}.core
+${CORE_VIEW_IMPORTS}
+
+class AppBarElement(context: LynxContext) : LynxUI<View>(context) {
+    override fun createView(context: Context): View {
+        return View(context).apply {
+            minimumHeight = (56 * context.resources.displayMetrics.density).toInt()
+            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
+                val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
+                insets
+            }
+            requestApplyInsets()
+        }
+    }
+}
+`;
+}
 
 // src/android/create.ts
 function findRepoRoot(start2) {
-  let dir = path3.resolve(start2);
-  const root = path3.parse(dir).root;
+  let dir = path4.resolve(start2);
+  const root = path4.parse(dir).root;
   while (dir !== root) {
-    const pkgPath = path3.join(dir, "package.json");
-    if (fs3.existsSync(pkgPath)) {
+    const pkgPath = path4.join(dir, "package.json");
+    if (fs4.existsSync(pkgPath)) {
       try {
-        const pkg = JSON.parse(fs3.readFileSync(pkgPath, "utf8"));
+        const pkg = JSON.parse(fs4.readFileSync(pkgPath, "utf8"));
         if (pkg.workspaces) return dir;
       } catch {
       }
     }
-    dir = path3.dirname(dir);
+    dir = path4.dirname(dir);
   }
   return start2;
 }
@@ -861,8 +1055,8 @@ var create = async (opts = {}) => {
   const origCwd = process.cwd();
   if (target === "dev-app") {
     const repoRoot = findRepoRoot(origCwd);
-    const devAppDir = path3.join(repoRoot, "packages", "tamer-dev-app");
-    if (!fs3.existsSync(path3.join(devAppDir, "tamer.config.json"))) {
+    const devAppDir = path4.join(repoRoot, "packages", "tamer-dev-app");
+    if (!fs4.existsSync(path4.join(devAppDir, "tamer.config.json"))) {
       console.error("\u274C packages/tamer-dev-app/tamer.config.json not found.");
       process.exit(1);
     }
@@ -892,30 +1086,30 @@ var create = async (opts = {}) => {
   const packagePath = packageName.replace(/\./g, "/");
   const gradleVersion = "8.14.2";
   const androidDir = config.paths?.androidDir ?? "android";
-  const rootDir = path3.join(process.cwd(), androidDir);
-  const appDir = path3.join(rootDir, "app");
-  const mainDir = path3.join(appDir, "src", "main");
-  const javaDir = path3.join(mainDir, "java", packagePath);
-  const kotlinDir = path3.join(mainDir, "kotlin", packagePath);
-  const kotlinGeneratedDir = path3.join(kotlinDir, "generated");
-  const assetsDir = path3.join(mainDir, "assets");
-  const themesDir = path3.join(mainDir, "res", "values");
-  const gradleDir = path3.join(rootDir, "gradle");
+  const rootDir = path4.join(process.cwd(), androidDir);
+  const appDir = path4.join(rootDir, "app");
+  const mainDir = path4.join(appDir, "src", "main");
+  const javaDir = path4.join(mainDir, "java", packagePath);
+  const kotlinDir = path4.join(mainDir, "kotlin", packagePath);
+  const kotlinGeneratedDir = path4.join(kotlinDir, "generated");
+  const assetsDir = path4.join(mainDir, "assets");
+  const themesDir = path4.join(mainDir, "res", "values");
+  const gradleDir = path4.join(rootDir, "gradle");
   function writeFile(filePath, content, options) {
-    fs3.mkdirSync(path3.dirname(filePath), { recursive: true });
-    fs3.writeFileSync(
+    fs4.mkdirSync(path4.dirname(filePath), { recursive: true });
+    fs4.writeFileSync(
       filePath,
       content.trimStart(),
       options?.encoding ?? "utf8"
     );
   }
-  if (fs3.existsSync(rootDir)) {
+  if (fs4.existsSync(rootDir)) {
     console.log(`\u{1F9F9} Removing existing directory: ${rootDir}`);
-    fs3.rmSync(rootDir, { recursive: true, force: true });
+    fs4.rmSync(rootDir, { recursive: true, force: true });
   }
   console.log(`\u{1F680} Creating a new Tamer4Lynx project in: ${rootDir}`);
   writeFile(
-    path3.join(gradleDir, "libs.versions.toml"),
+    path4.join(gradleDir, "libs.versions.toml"),
     `
 [versions]
 agp = "8.9.1"
@@ -970,7 +1164,7 @@ kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
 `
   );
   writeFile(
-    path3.join(rootDir, "settings.gradle.kts"),
+    path4.join(rootDir, "settings.gradle.kts"),
     `
 pluginManagement {
     repositories {
@@ -1004,7 +1198,7 @@ println("If you have native modules please run tamer android link")
 `
   );
   writeFile(
-    path3.join(rootDir, "build.gradle.kts"),
+    path4.join(rootDir, "build.gradle.kts"),
     `
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
@@ -1014,7 +1208,7 @@ plugins {
 `
   );
   writeFile(
-    path3.join(rootDir, "gradle.properties"),
+    path4.join(rootDir, "gradle.properties"),
     `
 org.gradle.jvmargs=-Xmx2048m
 android.useAndroidX=true
@@ -1023,7 +1217,7 @@ android.enableJetifier=true
 `
   );
   writeFile(
-    path3.join(appDir, "build.gradle.kts"),
+    path4.join(appDir, "build.gradle.kts"),
     `
 plugins {
     alias(libs.plugins.android.application)
@@ -1112,7 +1306,7 @@ dependencies {
 `
   );
   writeFile(
-    path3.join(themesDir, "themes.xml"),
+    path4.join(themesDir, "themes.xml"),
     `
 <resources>
     <style name="Theme.MyApp" parent="Theme.AppCompat.Light.NoActionBar">
@@ -1146,7 +1340,7 @@ dependencies {
   const iconPaths = resolveIconPaths(process.cwd(), config);
   const manifestIconAttrs = iconPaths ? '        android:icon="@mipmap/ic_launcher"\n        android:roundIcon="@mipmap/ic_launcher"\n' : "";
   writeFile(
-    path3.join(mainDir, "AndroidManifest.xml"),
+    path4.join(mainDir, "AndroidManifest.xml"),
     `
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 ${manifestPermissions}
@@ -1160,7 +1354,7 @@ ${manifestIconAttrs}        android:usesCleartextTraffic="true"
 `
   );
   writeFile(
-    path3.join(kotlinGeneratedDir, "GeneratedLynxExtensions.kt"),
+    path4.join(kotlinGeneratedDir, "GeneratedLynxExtensions.kt"),
     `
 package ${packageName}.generated
 
@@ -1182,66 +1376,67 @@ object GeneratedLynxExtensions {
     host: config.devServer.host ?? "10.0.2.2",
     port: config.devServer.port ?? config.devServer.httpPort ?? 3e3
   } : void 0;
-  const vars = { packageName, appName, devMode, devServer };
+  const resolved = resolveHostPaths(process.cwd());
+  const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.lynxProjectDir };
   const [applicationSource, templateProviderSource] = await Promise.all([
     fetchAndPatchApplication(vars),
     fetchAndPatchTemplateProvider(vars)
   ]);
-  writeFile(path3.join(javaDir, "App.java"), applicationSource);
-  writeFile(path3.join(javaDir, "TemplateProvider.java"), templateProviderSource);
-  writeFile(path3.join(kotlinDir, "MainActivity.kt"), getStandaloneMainActivity(vars));
+  writeFile(path4.join(javaDir, "App.java"), applicationSource);
+  writeFile(path4.join(javaDir, "TemplateProvider.java"), templateProviderSource);
+  writeFile(path4.join(kotlinDir, "MainActivity.kt"), getStandaloneMainActivity(vars));
   if (hasDevLauncher) {
-    writeFile(path3.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
+    writeFile(path4.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
   }
-  const coreDir = path3.join(kotlinDir, "core");
-  writeFile(path3.join(coreDir, "LynxExplorerInput.kt"), getLynxExplorerInputSource(packageName));
+  const coreDir = path4.join(kotlinDir, "core");
+  writeFile(path4.join(coreDir, "LynxExplorerInput.kt"), getLynxExplorerInputSource(packageName));
   const devClientManagerSource = getDevClientManager(vars);
   if (devClientManagerSource) {
-    writeFile(path3.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
-    writeFile(path3.join(kotlinDir, "DevServerPrefs.kt"), getDevServerPrefs(vars));
+    writeFile(path4.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
+    writeFile(path4.join(kotlinDir, "DevServerPrefs.kt"), getDevServerPrefs(vars));
   }
   if (iconPaths) {
-    const resDir = path3.join(mainDir, "res");
+    const resDir = path4.join(mainDir, "res");
     if (iconPaths.android) {
       const src = iconPaths.android;
-      const entries = fs3.readdirSync(src, { withFileTypes: true });
+      const entries = fs4.readdirSync(src, { withFileTypes: true });
       for (const e of entries) {
-        const dest = path3.join(resDir, e.name);
+        const dest = path4.join(resDir, e.name);
         if (e.isDirectory()) {
-          fs3.cpSync(path3.join(src, e.name), dest, { recursive: true });
+          fs4.cpSync(path4.join(src, e.name), dest, { recursive: true });
         } else {
-          fs3.mkdirSync(resDir, { recursive: true });
-          fs3.copyFileSync(path3.join(src, e.name), dest);
+          fs4.mkdirSync(resDir, { recursive: true });
+          fs4.copyFileSync(path4.join(src, e.name), dest);
         }
       }
       console.log("\u2705 Copied Android icon from tamer.config.json icon.android");
     } else if (iconPaths.source) {
       const mipmapDensities = ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"];
       for (const d of mipmapDensities) {
-        const dir = path3.join(resDir, `mipmap-${d}`);
-        fs3.mkdirSync(dir, { recursive: true });
-        fs3.copyFileSync(iconPaths.source, path3.join(dir, "ic_launcher.png"));
+        const dir = path4.join(resDir, `mipmap-${d}`);
+        fs4.mkdirSync(dir, { recursive: true });
+        fs4.copyFileSync(iconPaths.source, path4.join(dir, "ic_launcher.png"));
       }
       console.log("\u2705 Copied app icon from tamer.config.json icon.source");
     }
   }
-  fs3.mkdirSync(assetsDir, { recursive: true });
-  fs3.writeFileSync(path3.join(assetsDir, ".gitkeep"), "");
+  fs4.mkdirSync(assetsDir, { recursive: true });
+  fs4.writeFileSync(path4.join(assetsDir, ".gitkeep"), "");
   console.log(`\u2705 Android Kotlin project created at ${rootDir}`);
   async function finalizeProjectSetup() {
     if (androidSdk) {
       try {
         const sdkDirContent = `sdk.dir=${androidSdk.replace(/\\/g, "/")}`;
-        writeFile(path3.join(rootDir, "local.properties"), sdkDirContent);
+        writeFile(path4.join(rootDir, "local.properties"), sdkDirContent);
         console.log("\u{1F4E6} Created local.properties from tamer.config.json.");
       } catch (err) {
         console.error(`\u274C Failed to create local.properties: ${err.message}`);
       }
     } else {
-      const localPropsPath = path3.join(process.cwd(), "local.properties");
-      if (fs3.existsSync(localPropsPath)) {
+      const localPropsPath = path4.join(process.cwd(), "local.properties");
+      if (fs4.existsSync(localPropsPath)) {
         try {
-          fs3.copyFileSync(localPropsPath, path3.join(rootDir, "local.properties"));
+          fs4.copyFileSync(localPropsPath, path4.join(rootDir, "local.properties"));
           console.log("\u{1F4E6} Copied existing local.properties to the android project.");
         } catch (err) {
           console.error("\u274C Failed to copy local.properties:", err);
@@ -1262,109 +1457,6 @@ var create_default = create;
 // src/android/autolink.ts
 import fs5 from "fs";
 import path5 from "path";
-
-// src/common/config.ts
-import fs4 from "fs";
-import path4 from "path";
-var LYNX_EXT_JSON = "lynx.ext.json";
-var TAMER_JSON = "tamer.json";
-function loadLynxExtJson(packagePath) {
-  const p = path4.join(packagePath, LYNX_EXT_JSON);
-  if (!fs4.existsSync(p)) return null;
-  try {
-    return JSON.parse(fs4.readFileSync(p, "utf8"));
-  } catch {
-    return null;
-  }
-}
-function loadTamerJson(packagePath) {
-  const p = path4.join(packagePath, TAMER_JSON);
-  if (!fs4.existsSync(p)) return null;
-  try {
-    return JSON.parse(fs4.readFileSync(p, "utf8"));
-  } catch {
-    return null;
-  }
-}
-function loadExtensionConfig(packagePath) {
-  const lynxExt = loadLynxExtJson(packagePath);
-  const tamer = loadTamerJson(packagePath);
-  const raw = lynxExt ?? tamer;
-  if (!raw) return null;
-  const normalized = {};
-  if (raw.platforms?.android || raw.android) {
-    const a = raw.platforms?.android ?? raw.android;
-    const moduleClassName = a?.moduleClassName ?? raw.android?.moduleClassName;
-    const elements = a?.elements ?? raw.android?.elements;
-    const permissions = a?.permissions ?? raw.android?.permissions;
-    if (moduleClassName || elements || permissions) {
-      normalized.android = {
-        ...moduleClassName && { moduleClassName },
-        sourceDir: a?.sourceDir ?? raw.android?.sourceDir ?? "android",
-        ...elements && Object.keys(elements).length > 0 && { elements },
-        ...permissions && Array.isArray(permissions) && permissions.length > 0 && { permissions }
-      };
-    }
-  }
-  if (raw.platforms?.ios || raw.ios) {
-    const i = raw.platforms?.ios ?? raw.ios;
-    const moduleClassName = i?.moduleClassName ?? raw.ios?.moduleClassName;
-    if (moduleClassName) {
-      normalized.ios = {
-        moduleClassName,
-        podspecPath: i?.podspecPath ?? raw.ios?.podspecPath ?? "."
-      };
-    }
-  }
-  if (Object.keys(normalized).length === 0) return null;
-  return normalized;
-}
-function hasExtensionConfig(packagePath) {
-  return fs4.existsSync(path4.join(packagePath, LYNX_EXT_JSON)) || fs4.existsSync(path4.join(packagePath, TAMER_JSON));
-}
-function getNodeModulesPath(projectRoot) {
-  let nodeModulesPath = path4.join(projectRoot, "node_modules");
-  const workspaceRoot = path4.join(projectRoot, "..", "..");
-  const rootNodeModules = path4.join(workspaceRoot, "node_modules");
-  if (fs4.existsSync(path4.join(workspaceRoot, "package.json")) && fs4.existsSync(rootNodeModules) && path4.basename(path4.dirname(projectRoot)) === "packages") {
-    nodeModulesPath = rootNodeModules;
-  } else if (!fs4.existsSync(nodeModulesPath)) {
-    const altRoot = path4.join(projectRoot, "..", "..");
-    const altNodeModules = path4.join(altRoot, "node_modules");
-    if (fs4.existsSync(path4.join(altRoot, "package.json")) && fs4.existsSync(altNodeModules)) {
-      nodeModulesPath = altNodeModules;
-    }
-  }
-  return nodeModulesPath;
-}
-function discoverNativeExtensions(projectRoot) {
-  const nodeModulesPath = getNodeModulesPath(projectRoot);
-  const result = [];
-  if (!fs4.existsSync(nodeModulesPath)) return result;
-  const packageDirs = fs4.readdirSync(nodeModulesPath);
-  const check = (name, packagePath) => {
-    if (!hasExtensionConfig(packagePath)) return;
-    const config = loadExtensionConfig(packagePath);
-    const className = config?.android?.moduleClassName;
-    if (className) result.push({ packageName: name, moduleClassName: className });
-  };
-  for (const dirName of packageDirs) {
-    const fullPath = path4.join(nodeModulesPath, dirName);
-    if (dirName.startsWith("@")) {
-      try {
-        for (const scopedDirName of fs4.readdirSync(fullPath)) {
-          check(`${dirName}/${scopedDirName}`, path4.join(fullPath, scopedDirName));
-        }
-      } catch {
-      }
-    } else {
-      check(dirName, fullPath);
-    }
-  }
-  return result;
-}
-
-// src/android/autolink.ts
 var autolink = () => {
   let resolved;
   try {
@@ -1502,7 +1594,11 @@ ${implementationLines || "    // No native dependencies found to link."}`;
         }
       }
     })).filter((p) => Object.keys(p.config.android?.elements ?? {}).length > 0);
-    const coreElementImport = `import ${projectPackage}.core.LynxExplorerInput`;
+    const coreElementImport = `import ${projectPackage}.core.LynxExplorerInput
+import ${projectPackage}.core.ScreenElement
+import ${projectPackage}.core.SafeAreaElement
+import ${projectPackage}.core.AvoidKeyboardElement
+import ${projectPackage}.core.AppBarElement`;
     const coreElementRegistration = `        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("input") {
             override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
                 return LynxExplorerInput(context)
@@ -1511,6 +1607,26 @@ ${implementationLines || "    // No native dependencies found to link."}`;
         LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("explorer-input") {
             override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
                 return LynxExplorerInput(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("screen") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return ScreenElement(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("safe-area") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return SafeAreaElement(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("avoid-keyboard") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return AvoidKeyboardElement(context)
+            }
+        })
+        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("app-bar") {
+            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
+                return AppBarElement(context)
             }
         })`;
     const moduleImports = modulePackages.map((p) => `import ${p.config.android.moduleClassName}`).join("\n");
@@ -1566,10 +1682,13 @@ ${allRegistrations}
     updateSettingsGradle(packages);
     updateAppBuildGradle(packages);
     const coreDir = path5.join(appAndroidPath, "app", "src", "main", "kotlin", packageName.replace(/\./g, "/"), "core");
-    const coreElementPath = path5.join(coreDir, "LynxExplorerInput.kt");
     fs5.mkdirSync(coreDir, { recursive: true });
-    fs5.writeFileSync(coreElementPath, getLynxExplorerInputSource(packageName));
-    console.log("\u2705 Synced core input/explorer-input element");
+    fs5.writeFileSync(path5.join(coreDir, "LynxExplorerInput.kt"), getLynxExplorerInputSource(packageName));
+    fs5.writeFileSync(path5.join(coreDir, "ScreenElement.kt"), getScreenElementSource(packageName));
+    fs5.writeFileSync(path5.join(coreDir, "SafeAreaElement.kt"), getSafeAreaElementSource(packageName));
+    fs5.writeFileSync(path5.join(coreDir, "AvoidKeyboardElement.kt"), getAvoidKeyboardElementSource(packageName));
+    fs5.writeFileSync(path5.join(coreDir, "AppBarElement.kt"), getAppBarElementSource(packageName));
+    console.log("\u2705 Synced core elements (input, explorer-input, screen, safe-area, avoid-keyboard, app-bar)");
     generateKotlinExtensionsFile(packages, packageName);
     syncManifestPermissions(packages);
     console.log("\u2728 Autolinking complete.");
@@ -1637,7 +1756,7 @@ async function syncDevClient() {
     host: config.devServer.host ?? "10.0.2.2",
     port: config.devServer.port ?? config.devServer.httpPort ?? 3e3
   } : void 0;
-  const vars = { packageName, appName, devMode, devServer };
+  const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.lynxProjectDir };
   const [templateProviderSource] = await Promise.all([
     fetchAndPatchTemplateProvider(vars)
   ]);

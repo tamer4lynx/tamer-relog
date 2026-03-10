@@ -1,4 +1,5 @@
 import type { DevMode } from "../common/hostConfig";
+import { discoverNativeExtensions } from "../common/config";
 import { fetchExplorerFile } from "./ref";
 
 export type PatchVars = {
@@ -6,6 +7,7 @@ export type PatchVars = {
   appName: string;
   devMode: DevMode;
   devServer?: { host: string; port: number };
+  projectRoot?: string;
 };
 
 const EXPLORER_APP =
@@ -246,6 +248,9 @@ class DevClientManager(private val context: Context, private val onReload: Runna
 
 export function getProjectActivity(vars: PatchVars): string {
   const hasDevClient = vars.devMode === "embedded";
+  const extensions = vars.projectRoot ? discoverNativeExtensions(vars.projectRoot) : [];
+  const hasTamerInsets = extensions.some((e) => e.packageName === "tamer-insets");
+
   const devClientInit = hasDevClient
     ? `
         devClientManager = DevClientManager(this) { lynxView?.renderTemplateUrl("main.lynx.bundle", "") }
@@ -263,18 +268,40 @@ export function getProjectActivity(vars: PatchVars): string {
     ? `
 import ${vars.packageName}.DevClientManager`
     : "";
+  const routerImport = `
+import com.nanofuxion.tamerrouter.TamerRouterNativeModule`;
+  const insetsImport = hasTamerInsets ? `
+import com.nanofuxion.tamerinsets.TamerInsetsModule` : "";
+  const insetsAttach = hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(lynxView)` : "";
+  const insetsDetach = hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(null)` : "";
+
+  const insetsListenerBlock = hasTamerInsets
+    ? ""
+    : `
+        ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
+            insets
+        }`;
+
+  const insetsImports = hasTamerInsets
+    ? ""
+    : `
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
+import androidx.core.view.ViewCompat`;
 
   return `package ${vars.packageName}
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.updatePadding
-import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsControllerCompat${insetsImports}
 import com.lynx.tasm.LynxView
-import com.lynx.tasm.LynxViewBuilder${devClientImports}
+import com.lynx.tasm.LynxViewBuilder${devClientImports}${routerImport}${insetsImport}
 
 class ProjectActivity : AppCompatActivity() {
     private var lynxView: LynxView? = null
@@ -284,17 +311,22 @@ ${devClientField}
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         lynxView = buildLynxView()
-        setContentView(lynxView)
-        ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
-            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
-            insets
-        }
+        setContentView(lynxView)${insetsListenerBlock}
+        TamerRouterNativeModule.attachHostView(lynxView)${insetsAttach}
         lynxView?.renderTemplateUrl("main.lynx.bundle", "")${devClientInit}
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        TamerRouterNativeModule.requestBack { consumed ->
+            if (!consumed) {
+                runOnUiThread { super.onBackPressed() }
+            }
+        }
+    }
+
     override fun onDestroy() {
+        TamerRouterNativeModule.attachHostView(null)${insetsDetach}
         lynxView?.destroy()
         lynxView = null${devClientCleanup}
         super.onDestroy()

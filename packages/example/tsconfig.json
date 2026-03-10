@@ -12,6 +12,11 @@
 
     "esModuleInterop": true,
     "skipLibCheck": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "tamer-router/generated-routes": ["node_modules/.tamer-router/_generated_routes.tsx"]
+    }
   },
   "exclude": ["dist/"],
 }

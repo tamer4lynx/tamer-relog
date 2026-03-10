@@ -16,7 +16,13 @@
     "@lynx-js/react": "^0.112.1",
     "jiggle": "*",
     "lynxwebsockets": "*",
+    "react-router": "^6.28.0",
+    "tamer-app-shell": "file:../tamer-app-shell",
     "tamer-dev-client": "*",
+    "tamer-insets": "file:../tamer-insets",
+    "tamer-plugin": "*",
+    "tamer-router": "*",
+    "tamer-screen": "file:../tamer-screen",
     "ws": "^8.18.3"
   },
   "devDependencies": {
