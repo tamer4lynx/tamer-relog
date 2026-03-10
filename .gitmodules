@@ -10,3 +10,9 @@
 [submodule "packages/tamer-dev-client"]
 	path = packages/tamer-dev-client
 	url = https://github.com/nanofuxion/tamer-dev-client.git
+[submodule "packages/tamer-plugin"]
+	path = packages/tamer-plugin
+	url = https://github.com/nanofuxion/tamer-plugin.git
+[submodule "packages/tamer-router"]
+	path = packages/tamer-router
+	url = https://github.com/nanofuxion/tamer-router.git
