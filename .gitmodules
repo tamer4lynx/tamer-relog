@@ -16,3 +16,12 @@
 [submodule "packages/tamer-router"]
 	path = packages/tamer-router
 	url = https://github.com/nanofuxion/tamer-router.git
+[submodule "packages/tamer-icons"]
+	path = packages/tamer-icons
+	url = https://github.com/nanofuxion/tamer-icons.git
+[submodule "packages/tamer-insets"]
+	path = packages/tamer-insets
+	url = https://github.com/nanofuxion/tamer-insets.git
+[submodule "packages/tamer-system-ui"]
+	path = packages/tamer-system-ui
+	url = https://github.com/nanofuxion/tamer-system-ui.git
