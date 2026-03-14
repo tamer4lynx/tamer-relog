@@ -1,10 +1,22 @@
 /// <reference types="@lynx-js/react" />
+import { createContext, useContext } from '@lynx-js/react'
 import { useInsets, useKeyboard } from 'tamer-insets'
 import type { InsetsWithRaw, KeyboardStateWithRaw } from 'tamer-insets'
 import type { ViewProps } from '@lynx-js/types'
 
 export type { InsetsWithRaw, KeyboardStateWithRaw }
 export { useInsets, useKeyboard }
+
+export const SafeAreaContext = createContext<{
+  hasTop: boolean
+  hasRight: boolean
+  hasBottom: boolean
+  hasLeft: boolean
+} | null>(null)
+
+export function useSafeAreaContext() {
+  return useContext(SafeAreaContext)
+}
 
 export interface ScreenProps extends ViewProps {}
 
@@ -16,12 +28,7 @@ export interface AvoidKeyboardProps extends ViewProps {
   behavior?: 'padding' | 'position'
 }
 
-export interface AppBarProps extends ViewProps {
-  barHeight?: number
-}
-
 const ALL_EDGES = ['top', 'right', 'bottom', 'left'] as const
-const DEFAULT_APP_BAR_HEIGHT = 56
 
 export function Screen(props: ScreenProps) {
   const { children, style, ...rest } = props
@@ -30,7 +37,11 @@ export function Screen(props: ScreenProps) {
       style={{
         display: 'flex',
         flexDirection: 'column',
+        justifyContent: 'flex-start',
+        flexGrow: 1,
+        flexShrink: 0,
         width: '100%',
+        height: '100%',
         minHeight: '100vh',
         ...(style as object ?? {}),
       }}
@@ -46,18 +57,30 @@ export function SafeArea(props: SafeAreaProps) {
   const insets = useInsets()
   const active = edges ?? ALL_EDGES
 
+  const bottom = insets.bottom.toFixed(0)
+
   const padding: ViewProps['style'] = {}
-  if (active.includes('top')) padding.paddingTop = `${insets.top}px`
-  if (active.includes('right')) padding.paddingRight = `${insets.right}px`
-  if (active.includes('bottom')) padding.paddingBottom = `${insets.bottom}px`
-  if (active.includes('left')) padding.paddingLeft = `${insets.left}px`
+  if (active.includes('top')) padding.paddingTop = insets.top.toFixed(0)
+  if (active.includes('right')) padding.paddingRight = insets.right.toFixed(0)
+  if (active.includes('bottom')) padding.paddingBottom = bottom
+  if (active.includes('left')) padding.paddingLeft = insets.left.toFixed(0)
+
+  const ctx = {
+    hasTop: active.includes('top'),
+    hasRight: active.includes('right'),
+    hasBottom: active.includes('bottom'),
+    hasLeft: active.includes('left'),
+  }
 
   return (
+    <SafeAreaContext.Provider value={ctx}>
     <view
       style={{
         display: 'flex',
+        height: '100%',
         minHeight: '100vh',
         flexDirection: 'column',
+        justifyContent: 'flex-start',
         ...padding,
         ...(style as object ?? {}),
       }}
@@ -65,60 +88,37 @@ export function SafeArea(props: SafeAreaProps) {
     >
       {children}
     </view>
-  )
-}
-
-export function AppBar(props: AppBarProps) {
-  const { children, style, barHeight = DEFAULT_APP_BAR_HEIGHT, ...rest } = props
-  const insets = useInsets()
-  return (
-    <view
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        paddingTop: insets.top,
-        minHeight: barHeight,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        ...(style as object ?? {}),
-      }}
-      {...rest}
-    >
-      {children}
-    </view>
+    </SafeAreaContext.Provider>
   )
 }
 
 export function AvoidKeyboard(props: AvoidKeyboardProps) {
   const { children, style, behavior = 'padding', ...rest } = props
   const keyboard = useKeyboard()
+  const insets = useInsets()
+  const safeArea = useSafeAreaContext()
 
-  if (behavior === 'position') {
-    return (
-      <view
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative',
-          bottom: keyboard.visible ? keyboard.height : 0,
-          ...(style as object ?? {}),
-        }}
-        {...rest}
-      >
-        {children}
-      </view>
-    )
-  }
+  const keyboardOffset = keyboard.visible ? keyboard.height : 0
+  const cancelBottomInset =
+    keyboard.visible && safeArea?.hasBottom ? insets.bottom : 0
+
+  const paddingBottom =
+    behavior === 'padding'
+      ? keyboardOffset
+      : 0
+  const bottom = behavior === 'position' ? keyboardOffset : undefined
+  const marginBottom =
+    behavior === 'padding' && cancelBottomInset > 0 ? -cancelBottomInset : undefined
 
   return (
     <view
       style={{
         display: 'flex',
         flexDirection: 'column',
-        paddingBottom: keyboard.visible ? keyboard.height : 0,
+        flexShrink: 0,
+        paddingBottom,
+        ...(bottom !== undefined ? { position: 'relative' as const, bottom } : {}),
+        ...(marginBottom !== undefined ? { marginBottom } : {}),
         ...(style as object ?? {}),
       }}
       {...rest}
