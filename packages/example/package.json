@@ -15,11 +15,15 @@
   "dependencies": {
     "@lynx-js/react": "^0.112.1",
     "jiggle": "*",
+    "tamer-icons": "file:../tamer-icons",
     "lynxwebsockets": "*",
     "react-router": "^6.28.0",
     "tamer-dev-client": "*",
     "tamer-insets": "file:../tamer-insets",
+    "tamer-app-shell": "file:../tamer-app-shell",
     "tamer-screen": "file:../tamer-screen",
+    "tamer-system-ui": "*",
+    "tamer-text-input": "file:../tamer-text-input",
     "tamer-plugin": "*",
     "tamer-router": "*",
     "ws": "^8.18.3"

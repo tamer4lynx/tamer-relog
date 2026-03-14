@@ -8,6 +8,7 @@ export interface ExtensionPlatformConfig {
   podspecPath?: string;
   elements?: Record<string, string>;
   permissions?: string[];
+  attachHostView?: boolean;
 }
 
 export interface ExtensionConfig {
@@ -33,6 +34,7 @@ export interface NormalizedExtensionConfig {
     sourceDir: string;
     elements?: Record<string, string>;
     permissions?: string[];
+    attachHostView?: boolean;
   };
   ios?: {
     moduleClassName: string;
@@ -77,12 +79,14 @@ export function loadExtensionConfig(packagePath: string): NormalizedExtensionCon
     const moduleClassName = a?.moduleClassName ?? (raw.android as any)?.moduleClassName;
     const elements = a?.elements ?? (raw.android as any)?.elements;
     const permissions = a?.permissions ?? (raw.android as any)?.permissions;
-    if (moduleClassName || elements || permissions) {
+      const attachHostView = (a as any)?.attachHostView ?? (raw.android as any)?.attachHostView;
+      if (moduleClassName || elements || permissions || attachHostView) {
       normalized.android = {
         ...(moduleClassName && { moduleClassName }),
         sourceDir: a?.sourceDir ?? (raw.android as any)?.sourceDir ?? 'android',
         ...(elements && Object.keys(elements).length > 0 && { elements }),
         ...(permissions && Array.isArray(permissions) && permissions.length > 0 && { permissions }),
+        ...(attachHostView && { attachHostView: true }),
       };
     }
   }
@@ -126,6 +130,7 @@ export function getNodeModulesPath(projectRoot: string): string {
 export interface NativeModuleInfo {
   packageName: string;
   moduleClassName: string;
+  attachHostView?: boolean;
 }
 
 export function discoverNativeExtensions(projectRoot: string): NativeModuleInfo[] {
@@ -138,7 +143,7 @@ export function discoverNativeExtensions(projectRoot: string): NativeModuleInfo[
     if (!hasExtensionConfig(packagePath)) return;
     const config = loadExtensionConfig(packagePath);
     const className = config?.android?.moduleClassName;
-    if (className) result.push({ packageName: name, moduleClassName: className });
+    if (className) result.push({ packageName: name, moduleClassName: className, attachHostView: config?.android?.attachHostView });
   };
 
   for (const dirName of packageDirs) {

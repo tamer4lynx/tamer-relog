@@ -343,12 +343,14 @@ function loadExtensionConfig(packagePath) {
     const moduleClassName = a?.moduleClassName ?? raw.android?.moduleClassName;
     const elements = a?.elements ?? raw.android?.elements;
     const permissions = a?.permissions ?? raw.android?.permissions;
-    if (moduleClassName || elements || permissions) {
+    const attachHostView = a?.attachHostView ?? raw.android?.attachHostView;
+    if (moduleClassName || elements || permissions || attachHostView) {
       normalized.android = {
         ...moduleClassName && { moduleClassName },
         sourceDir: a?.sourceDir ?? raw.android?.sourceDir ?? "android",
         ...elements && Object.keys(elements).length > 0 && { elements },
-        ...permissions && Array.isArray(permissions) && permissions.length > 0 && { permissions }
+        ...permissions && Array.isArray(permissions) && permissions.length > 0 && { permissions },
+        ...attachHostView && { attachHostView: true }
       };
     }
   }
@@ -392,7 +394,7 @@ function discoverNativeExtensions(projectRoot) {
     if (!hasExtensionConfig(packagePath)) return;
     const config = loadExtensionConfig(packagePath);
     const className = config?.android?.moduleClassName;
-    if (className) result.push({ packageName: name, moduleClassName: className });
+    if (className) result.push({ packageName: name, moduleClassName: className, attachHostView: config?.android?.attachHostView });
   };
   for (const dirName of packageDirs) {
     const fullPath = path3.join(nodeModulesPath, dirName);
@@ -467,6 +469,7 @@ import ${vars.packageName}.generated.GeneratedLynxExtensions;
   return out.replace(/\n{3,}/g, "\n\n");
 }
 function getLoadTemplateBody(vars) {
+  const projectSegment = vars.projectRoot ? vars.projectRoot.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? "" : "";
   if (vars.devMode !== "embedded") {
     return `    @Override
     public void loadTemplate(String url, final Callback callback) {
@@ -488,6 +491,7 @@ function getLoadTemplateBody(vars) {
     }`;
   }
   return `    private static final String DEV_CLIENT_BUNDLE = "dev-client.lynx.bundle";
+    private static final String PROJECT_BUNDLE_SEGMENT = "${projectSegment}";
 
     @Override
     public void loadTemplate(String url, final Callback callback) {
@@ -511,21 +515,30 @@ function getLoadTemplateBody(vars) {
                 if (devUrl != null && !devUrl.isEmpty()) {
                     try {
                         java.net.URL u = new java.net.URL(devUrl);
-                        String base = u.getProtocol() + "://" + u.getHost() + (u.getPort() > 0 ? ":" + u.getPort() : ":3000") + (u.getPath() != null && !u.getPath().isEmpty() ? u.getPath() : "");
-                        String fetchUrl = base.endsWith("/") ? base + url : base + "/" + url;
+                        String origin = u.getProtocol() + "://" + u.getHost() + (u.getPort() > 0 ? ":" + u.getPort() : ":3000");
+                        String configuredPath = u.getPath() != null ? u.getPath() : "";
+                        configuredPath = configuredPath.replaceAll("/+$", "");
+
+                        java.util.ArrayList<String> candidatePaths = new java.util.ArrayList<>();
+                        if (!configuredPath.isEmpty()) candidatePaths.add(configuredPath + "/" + url);
+                        if (PROJECT_BUNDLE_SEGMENT != null && !PROJECT_BUNDLE_SEGMENT.isEmpty()) candidatePaths.add("/" + PROJECT_BUNDLE_SEGMENT + "/" + url);
+                        candidatePaths.add("/" + url);
+
                         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
                             .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                             .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                             .build();
-                        okhttp3.Request request = new okhttp3.Request.Builder().url(fetchUrl).build();
-                        try (okhttp3.Response response = client.newCall(request).execute()) {
-                            if (response.isSuccessful() && response.body() != null) {
-                                callback.onSuccess(response.body().bytes());
-                                return;
+                        for (String candidatePath : candidatePaths) {
+                            String fetchUrl = origin + (candidatePath.startsWith("/") ? candidatePath : "/" + candidatePath);
+                            okhttp3.Request request = new okhttp3.Request.Builder().url(fetchUrl).build();
+                            try (okhttp3.Response response = client.newCall(request).execute()) {
+                                if (response.isSuccessful() && response.body() != null) {
+                                    callback.onSuccess(response.body().bytes());
+                                    return;
+                                }
                             }
-                            callback.onFailed("HTTP " + response.code() + " for " + fetchUrl);
-                            return;
                         }
+                        callback.onFailed("HTTP fetch failed for " + url + " via " + devUrl);
                     } catch (Exception e) {
                         callback.onFailed("Fetch failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
                         return;
@@ -628,7 +641,7 @@ function getProjectActivity(vars) {
   const extensions = vars.projectRoot ? discoverNativeExtensions(vars.projectRoot) : [];
   const hasTamerInsets = extensions.some((e) => e.packageName === "tamer-insets");
   const devClientInit = hasDevClient ? `
-        devClientManager = DevClientManager(this) { lynxView?.renderTemplateUrl("main.lynx.bundle", "") }
+        devClientManager = DevClientManager(this) { reloadProjectView() }
         devClientManager?.connect()
 ` : "";
   const devClientField = hasDevClient ? `    private var devClientManager: DevClientManager? = null
@@ -642,10 +655,25 @@ import ${vars.packageName}.DevClientManager` : "";
 import com.nanofuxion.tamerrouter.TamerRouterNativeModule`;
   const insetsImport = hasTamerInsets ? `
 import com.nanofuxion.tamerinsets.TamerInsetsModule` : "";
+  const insetsHandlerImport = hasTamerInsets ? `
+import android.os.Handler
+import android.os.Looper` : "";
   const insetsAttach = hasTamerInsets ? `
         TamerInsetsModule.attachHostView(lynxView)` : "";
   const insetsDetach = hasTamerInsets ? `
         TamerInsetsModule.attachHostView(null)` : "";
+  const insetsHandlerField = hasTamerInsets ? `
+    private val handler = Handler(Looper.getMainLooper())` : "";
+  const insetsDelayedOnCreate = hasTamerInsets ? `
+        listOf(150L, 400L, 800L).forEach { delay ->
+            handler.postDelayed({ TamerInsetsModule.reRequestInsets() }, delay)
+        }` : "";
+  const insetsOnWindowFocus = hasTamerInsets ? `
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) TamerInsetsModule.reRequestInsets()
+    }
+` : "";
   const insetsListenerBlock = hasTamerInsets ? "" : `
         ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
@@ -657,9 +685,56 @@ import com.nanofuxion.tamerinsets.TamerInsetsModule` : "";
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.core.view.ViewCompat`;
+  const insetsDelayedReload = hasTamerInsets && hasDevClient ? `
+        listOf(150L, 400L, 800L).forEach { delay ->
+            handler.postDelayed({ TamerInsetsModule.reRequestInsets() }, delay)
+        }` : "";
+  const reloadMethod = hasDevClient ? `
+    private fun reloadProjectView() {
+        val oldView = lynxView
+        TamerRouterNativeModule.attachHostView(null)${insetsDetach}
+        oldView?.destroy()
+
+        val nextView = buildLynxView()
+        lynxView = nextView
+        setContentView(nextView)
+        TamerRouterNativeModule.attachHostView(nextView)${insetsAttach.replace("lynxView", "nextView")}
+        nextView.renderTemplateUrl("main.lynx.bundle", "")${insetsDelayedReload}
+    }
+` : "";
+  const onResumeBlock = hasTamerInsets ? `
+    override fun onResume() {
+        super.onResume()
+        lynxView?.let { TamerInsetsModule.reRequestInsets() }
+    }
+` : "";
+  const touchBlurBlock = `
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) maybeClearFocusedInput(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun maybeClearFocusedInput(ev: MotionEvent) {
+        val focused = currentFocus
+        if (focused is EditText) {
+            val loc = IntArray(2)
+            focused.getLocationOnScreen(loc)
+            val x = ev.rawX.toInt()
+            val y = ev.rawY.toInt()
+            if (x < loc[0] || x > loc[0] + focused.width || y < loc[1] || y > loc[1] + focused.height) {
+                focused.clearFocus()
+                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(focused.windowToken, 0)
+            }
+        }
+    }
+`;
   return `package ${vars.packageName}
 
-import android.os.Bundle
+import android.os.Bundle${insetsHandlerImport}
+import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat${insetsImports}
@@ -668,7 +743,7 @@ import com.lynx.tasm.LynxViewBuilder${devClientImports}${routerImport}${insetsIm
 
 class ProjectActivity : AppCompatActivity() {
     private var lynxView: LynxView? = null
-${devClientField}
+${devClientField}${insetsHandlerField}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -676,9 +751,9 @@ ${devClientField}
         lynxView = buildLynxView()
         setContentView(lynxView)${insetsListenerBlock}
         TamerRouterNativeModule.attachHostView(lynxView)${insetsAttach}
-        lynxView?.renderTemplateUrl("main.lynx.bundle", "")${devClientInit}
+        lynxView?.renderTemplateUrl("main.lynx.bundle", "")${devClientInit}${insetsDelayedOnCreate}
     }
-
+${insetsOnWindowFocus}${reloadMethod}${onResumeBlock}${touchBlurBlock}
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         TamerRouterNativeModule.requestBack { consumed ->
@@ -703,7 +778,19 @@ ${devClientField}
 }
 `;
 }
+function getPortraitCaptureActivity(vars) {
+  return `package ${vars.packageName}
+
+import com.journeyapps.barcodescanner.CaptureActivity
+
+class PortraitCaptureActivity : CaptureActivity()
+`;
+}
 function getStandaloneMainActivity(vars) {
+  const extensions = vars.projectRoot ? discoverNativeExtensions(vars.projectRoot) : [];
+  const hasTamerInsets = extensions.some((e) => e.packageName === "tamer-insets");
+  const hasTamerRouter = extensions.some((e) => e.packageName === "tamer-router");
+  const hasHostViewModules = extensions.some((e) => e.attachHostView);
   const hasDevClient = vars.devMode === "embedded";
   const devClientImports = hasDevClient ? `
 import android.Manifest
@@ -725,7 +812,7 @@ import com.nanofuxion.tamerdevclient.DevClientModule
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
         DevClientModule.attachScanLauncher {
-            scanResultLauncher.launch(IntentIntegrator(this).setPrompt("Scan dev server QR").createScanIntent())
+            scanResultLauncher.launch(IntentIntegrator(this).setCaptureActivity(PortraitCaptureActivity::class.java).setPrompt("Scan dev server QR").createScanIntent())
         }
         DevClientModule.attachReloadProjectLauncher {
             startActivity(Intent(this@MainActivity, ProjectActivity::class.java).addFlags(
@@ -761,25 +848,100 @@ import com.nanofuxion.tamerdevclient.DevClientModule
         scanResult?.contents?.let { DevClientModule.instance?.deliverScanResult(it) }
     }
 ` : "";
+  const routerImport = hasTamerRouter ? `
+import com.nanofuxion.tamerrouter.TamerRouterNativeModule` : "";
+  const insetsImport = hasTamerInsets ? `
+import com.nanofuxion.tamerinsets.TamerInsetsModule` : "";
+  const generatedExtImport = hasHostViewModules ? `
+import ${vars.packageName}.generated.GeneratedLynxExtensions` : "";
+  const insetsListenerBlock = hasTamerInsets ? "" : `
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
+            insets
+        }`;
+  const routerAttach = hasTamerRouter ? `
+        TamerRouterNativeModule.attachHostView(lynxView)` : "";
+  const insetsAttach = hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(lynxView)` : "";
+  const generatedExtAttach = hasHostViewModules ? `
+        GeneratedLynxExtensions.onHostViewChanged(lynxView)` : "";
+  const generatedExtDetach = hasHostViewModules ? `
+        GeneratedLynxExtensions.onHostViewChanged(null)` : "";
   const devClientCleanup = hasDevClient ? `
-        override fun onDestroy() {
-            reloadReceiver?.let { unregisterReceiver(it) }
-            DevClientModule.attachReloadProjectLauncher(null)
-            DevClientModule.attachLynxView(null)
-            super.onDestroy()
-        }
+    override fun onDestroy() {
+        reloadReceiver?.let { unregisterReceiver(it) }${hasTamerRouter ? `
+        TamerRouterNativeModule.attachHostView(null)` : ""}${hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(null)` : ""}${generatedExtDetach}
+        lynxView?.destroy()
+        lynxView = null
+        DevClientModule.attachReloadProjectLauncher(null)
+        DevClientModule.attachLynxView(null)
+        super.onDestroy()
+    }
 ` : "";
+  const backOverride = hasTamerRouter ? `
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        TamerRouterNativeModule.requestBack { consumed ->
+            if (!consumed) {
+                runOnUiThread { super.onBackPressed() }
+            }
+        }
+    }
+` : "";
+  const onPauseBlock = hasTamerInsets && hasDevClient || hasHostViewModules ? `
+    override fun onPause() {
+        super.onPause()${hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(null)` : ""}${generatedExtDetach}
+    }
+` : "";
+  const onResumeBlock = hasTamerInsets || hasHostViewModules ? `
+    override fun onResume() {
+        super.onResume()
+        lynxView?.let {${hasTamerInsets ? `
+            TamerInsetsModule.attachHostView(it)
+            TamerInsetsModule.reRequestInsets()` : ""}${hasHostViewModules ? `
+            GeneratedLynxExtensions.onHostViewChanged(it)` : ""}
+        }
+    }
+` : "";
+  const touchBlurBlockMain = `
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) maybeClearFocusedInput(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun maybeClearFocusedInput(ev: MotionEvent) {
+        val focused = currentFocus
+        if (focused is EditText) {
+            val loc = IntArray(2)
+            focused.getLocationOnScreen(loc)
+            val x = ev.rawX.toInt()
+            val y = ev.rawY.toInt()
+            if (x < loc[0] || x > loc[0] + focused.width || y < loc[1] || y > loc[1] + focused.height) {
+                focused.clearFocus()
+                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(focused.windowToken, 0)
+            }
+        }
+    }
+`;
   return `package ${vars.packageName}
 
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import com.lynx.tasm.LynxView
-import com.lynx.tasm.LynxViewBuilder${devClientImports}
+import com.lynx.tasm.LynxViewBuilder${devClientImports}${routerImport}${insetsImport}${generatedExtImport}
 
 class MainActivity : AppCompatActivity() {
 ${devClientField}    private var lynxView: LynxView? = null
@@ -789,16 +951,11 @@ ${devClientField}    private var lynxView: LynxView? = null
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         lynxView = buildLynxView()
-        setContentView(lynxView)
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
-            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
-            insets
-        }
+        setContentView(lynxView)${insetsListenerBlock}${routerAttach}${insetsAttach}${generatedExtAttach}
         ${devClientUriInit}lynxView?.renderTemplateUrl(${hasDevClient ? "currentUri" : "uri"}, "")${devClientInit}
     }
-
+${onPauseBlock}${onResumeBlock}${touchBlurBlockMain}
+${backOverride}
     private fun buildLynxView(): LynxView {
         val viewBuilder = LynxViewBuilder()
         viewBuilder.setTemplateProvider(TemplateProvider(this))
@@ -852,182 +1009,6 @@ object DevServerPrefs {
 
     private fun prefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    }
-}
-`;
-}
-
-// src/android/coreElements.ts
-function getLynxExplorerInputSource(packageName) {
-  return `package ${packageName}.core
-
-import android.content.Context
-import android.graphics.Color
-import android.text.Editable
-import android.text.TextWatcher
-import android.util.TypedValue
-import android.view.Gravity
-import android.view.View
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import androidx.appcompat.widget.AppCompatEditText
-import com.lynx.react.bridge.Callback
-import com.lynx.react.bridge.ReadableMap
-import com.lynx.tasm.behavior.LynxContext
-import com.lynx.tasm.behavior.LynxProp
-import com.lynx.tasm.behavior.LynxUIMethod
-import com.lynx.tasm.behavior.LynxUIMethodConstants
-import com.lynx.tasm.behavior.ui.LynxUI
-import com.lynx.tasm.event.LynxCustomEvent
-
-class LynxExplorerInput(context: LynxContext) : LynxUI<AppCompatEditText>(context) {
-
-    override fun createView(context: Context): AppCompatEditText {
-        val view = AppCompatEditText(context)
-        view.setLines(1)
-        view.isSingleLine = true
-        view.gravity = Gravity.CENTER_VERTICAL
-        view.background = null
-        view.imeOptions = EditorInfo.IME_ACTION_NONE
-        view.setHorizontallyScrolling(true)
-        view.setPadding(0, 0, 0, 0)
-        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-        view.minHeight = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            52f,
-            context.resources.displayMetrics
-        ).toInt()
-        view.setTextColor(Color.WHITE)
-        view.setHintTextColor(Color.argb(160, 255, 255, 255))
-        view.includeFontPadding = false
-        view.isFocusableInTouchMode = true
-        view.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                emitEvent("input", mapOf("value" to (s?.toString() ?: "")))
-            }
-        })
-        view.setOnFocusChangeListener { _: View?, hasFocus: Boolean ->
-            if (!hasFocus) emitEvent("blur", null)
-        }
-        return view
-    }
-
-    override fun onLayoutUpdated() {
-        super.onLayoutUpdated()
-        val paddingTop = mPaddingTop + mBorderTopWidth
-        val paddingBottom = mPaddingBottom + mBorderBottomWidth
-        val paddingLeft = mPaddingLeft + mBorderLeftWidth
-        val paddingRight = mPaddingRight + mBorderRightWidth
-        mView.setPadding(paddingLeft, paddingTop, paddingRight, paddingBottom)
-    }
-
-    @LynxProp(name = "value")
-    fun setValue(value: String) {
-        if (value != mView.text.toString()) {
-            mView.setText(value)
-        }
-    }
-
-    @LynxProp(name = "placeholder")
-    fun setPlaceholder(value: String) {
-        mView.hint = value
-    }
-
-    @LynxUIMethod
-    fun focus(params: ReadableMap?, callback: Callback) {
-        if (mView.requestFocus()) {
-            if (showSoftInput()) {
-                callback.invoke(LynxUIMethodConstants.SUCCESS)
-            } else {
-                callback.invoke(LynxUIMethodConstants.UNKNOWN, "fail to show keyboard")
-            }
-        } else {
-            callback.invoke(LynxUIMethodConstants.UNKNOWN, "fail to focus")
-        }
-    }
-
-    private fun showSoftInput(): Boolean {
-        val imm = lynxContext.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            ?: return false
-        return imm.showSoftInput(mView, InputMethodManager.SHOW_IMPLICIT, null)
-    }
-
-    private fun emitEvent(name: String, detail: Map<String, Any>?) {
-        val event = LynxCustomEvent(sign, name)
-        detail?.forEach { (k, v) -> event.addDetail(k, v) }
-        lynxContext.eventEmitter.sendCustomEvent(event)
-    }
-}
-`;
-}
-var CORE_VIEW_IMPORTS = `import android.content.Context
-import android.view.View
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.lynx.tasm.behavior.LynxContext
-import com.lynx.tasm.behavior.ui.LynxUI`;
-function getScreenElementSource(packageName) {
-  return `package ${packageName}.core
-${CORE_VIEW_IMPORTS}
-
-class ScreenElement(context: LynxContext) : LynxUI<View>(context) {
-    override fun createView(context: Context): View = View(context)
-}
-`;
-}
-function getSafeAreaElementSource(packageName) {
-  return `package ${packageName}.core
-${CORE_VIEW_IMPORTS}
-
-class SafeAreaElement(context: LynxContext) : LynxUI<View>(context) {
-    override fun createView(context: Context): View {
-        return View(context).apply {
-            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
-                val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-                v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-                insets
-            }
-            requestApplyInsets()
-        }
-    }
-}
-`;
-}
-function getAvoidKeyboardElementSource(packageName) {
-  return `package ${packageName}.core
-${CORE_VIEW_IMPORTS}
-
-class AvoidKeyboardElement(context: LynxContext) : LynxUI<View>(context) {
-    override fun createView(context: Context): View {
-        return View(context).apply {
-            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
-                val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-                v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, ime.bottom)
-                insets
-            }
-            requestApplyInsets()
-        }
-    }
-}
-`;
-}
-function getAppBarElementSource(packageName) {
-  return `package ${packageName}.core
-${CORE_VIEW_IMPORTS}
-
-class AppBarElement(context: LynxContext) : LynxUI<View>(context) {
-    override fun createView(context: Context): View {
-        return View(context).apply {
-            minimumHeight = (56 * context.resources.displayMetrics.density).toInt()
-            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
-                val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-                v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0)
-                insets
-            }
-            requestApplyInsets()
-        }
     }
 }
 `;
@@ -1388,8 +1369,6 @@ object GeneratedLynxExtensions {
   if (hasDevLauncher) {
     writeFile(path4.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
   }
-  const coreDir = path4.join(kotlinDir, "core");
-  writeFile(path4.join(coreDir, "LynxExplorerInput.kt"), getLynxExplorerInputSource(packageName));
   const devClientManagerSource = getDevClientManager(vars);
   if (devClientManagerSource) {
     writeFile(path4.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
@@ -1582,57 +1561,11 @@ ${implementationLines || "    // No native dependencies found to link."}`;
     const generatedDir = path5.join(appAndroidPath, "app", "src", "main", "kotlin", packagePath, "generated");
     const kotlinExtensionsPath = path5.join(generatedDir, "GeneratedLynxExtensions.kt");
     const modulePackages = packages.filter((p) => p.config.android?.moduleClassName);
-    const elementPackages = packages.filter((p) => p.config.android?.elements && Object.keys(p.config.android.elements).length > 0).map((p) => ({
-      ...p,
-      config: {
-        ...p.config,
-        android: {
-          ...p.config.android,
-          elements: Object.fromEntries(
-            Object.entries(p.config.android.elements).filter(([tag]) => tag !== "explorer-input" && tag !== "input")
-          )
-        }
-      }
-    })).filter((p) => Object.keys(p.config.android?.elements ?? {}).length > 0);
-    const coreElementImport = `import ${projectPackage}.core.LynxExplorerInput
-import ${projectPackage}.core.ScreenElement
-import ${projectPackage}.core.SafeAreaElement
-import ${projectPackage}.core.AvoidKeyboardElement
-import ${projectPackage}.core.AppBarElement`;
-    const coreElementRegistration = `        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("input") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return LynxExplorerInput(context)
-            }
-        })
-        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("explorer-input") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return LynxExplorerInput(context)
-            }
-        })
-        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("screen") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return ScreenElement(context)
-            }
-        })
-        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("safe-area") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return SafeAreaElement(context)
-            }
-        })
-        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("avoid-keyboard") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return AvoidKeyboardElement(context)
-            }
-        })
-        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("app-bar") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return AppBarElement(context)
-            }
-        })`;
+    const elementPackages = packages.filter((p) => p.config.android?.elements && Object.keys(p.config.android.elements).length > 0);
     const moduleImports = modulePackages.map((p) => `import ${p.config.android.moduleClassName}`).join("\n");
     const elementImports = elementPackages.flatMap(
       (p) => Object.values(p.config.android.elements).map((cls) => `import ${cls}`)
-    ).filter((v, i, a) => a.indexOf(v) === i);
+    ).filter((v, i, a) => a.indexOf(v) === i).join("\n");
     const moduleRegistrations = modulePackages.map((p) => {
       const fullClassName = p.config.android.moduleClassName;
       const simpleClassName = fullClassName.split(".").pop();
@@ -1648,12 +1581,20 @@ import ${projectPackage}.core.AppBarElement`;
         })`;
       })
     ).join("\n");
-    const allRegistrations = [moduleRegistrations, behaviorRegistrations, coreElementRegistration].filter(Boolean).join("\n");
+    const allRegistrations = [moduleRegistrations, behaviorRegistrations].filter(Boolean).join("\n");
+    const hostViewPackages = modulePackages.filter((p) => p.config.android?.attachHostView);
+    const hostViewLines = hostViewPackages.map((p) => {
+      const simpleClassName = p.config.android.moduleClassName.split(".").pop();
+      return `        ${simpleClassName}.attachHostView(view)`;
+    }).join("\n");
+    const hostViewMethod = hostViewPackages.length > 0 ? `
+    fun onHostViewChanged(view: android.view.View?) {
+${hostViewLines}
+    }` : "";
     const kotlinContent = `package ${projectPackage}.generated
 
 import android.content.Context
 import com.lynx.tasm.LynxEnv
-${coreElementImport}
 ${moduleImports}
 ${elementImports}
 
@@ -1664,7 +1605,7 @@ ${elementImports}
 object GeneratedLynxExtensions {
     fun register(context: Context) {
 ${allRegistrations}
-    }
+    }${hostViewMethod}
 }
 `;
     fs5.mkdirSync(generatedDir, { recursive: true });
@@ -1681,14 +1622,6 @@ ${allRegistrations}
     }
     updateSettingsGradle(packages);
     updateAppBuildGradle(packages);
-    const coreDir = path5.join(appAndroidPath, "app", "src", "main", "kotlin", packageName.replace(/\./g, "/"), "core");
-    fs5.mkdirSync(coreDir, { recursive: true });
-    fs5.writeFileSync(path5.join(coreDir, "LynxExplorerInput.kt"), getLynxExplorerInputSource(packageName));
-    fs5.writeFileSync(path5.join(coreDir, "ScreenElement.kt"), getScreenElementSource(packageName));
-    fs5.writeFileSync(path5.join(coreDir, "SafeAreaElement.kt"), getSafeAreaElementSource(packageName));
-    fs5.writeFileSync(path5.join(coreDir, "AvoidKeyboardElement.kt"), getAvoidKeyboardElementSource(packageName));
-    fs5.writeFileSync(path5.join(coreDir, "AppBarElement.kt"), getAppBarElementSource(packageName));
-    console.log("\u2705 Synced core elements (input, explorer-input, screen, safe-area, avoid-keyboard, app-bar)");
     generateKotlinExtensionsFile(packages, packageName);
     syncManifestPermissions(packages);
     console.log("\u2728 Autolinking complete.");
@@ -1756,7 +1689,7 @@ async function syncDevClient() {
     host: config.devServer.host ?? "10.0.2.2",
     port: config.devServer.port ?? config.devServer.httpPort ?? 3e3
   } : void 0;
-  const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.lynxProjectDir };
+  const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.projectRoot };
   const [templateProviderSource] = await Promise.all([
     fetchAndPatchTemplateProvider(vars)
   ]);
@@ -1770,24 +1703,26 @@ async function syncDevClient() {
     fs6.writeFileSync(path6.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
     fs6.writeFileSync(path6.join(kotlinDir, "DevServerPrefs.kt"), getDevServerPrefs(vars));
     fs6.writeFileSync(path6.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
+    fs6.writeFileSync(path6.join(kotlinDir, "PortraitCaptureActivity.kt"), getPortraitCaptureActivity(vars));
     let manifest = fs6.readFileSync(manifestPath, "utf-8");
     const projectActivityEntry = '        <activity android:name=".ProjectActivity" android:exported="false" android:taskAffinity="" android:launchMode="singleTask" android:documentLaunchMode="always" />';
+    const portraitCaptureEntry = '        <activity android:name=".PortraitCaptureActivity" android:screenOrientation="portrait" android:stateNotNeeded="true" android:theme="@style/zxing_CaptureTheme" android:windowSoftInputMode="stateAlwaysHidden" />';
     if (!manifest.includes("ProjectActivity")) {
-      manifest = manifest.replace(
-        /(\s*)(<\/application>)/,
-        `${projectActivityEntry}
-$1$2`
-      );
+      manifest = manifest.replace(/(\s*)(<\/application>)/, `${projectActivityEntry}
+$1$2`);
     } else {
-      manifest = manifest.replace(
-        /\s*<activity android:name="\.ProjectActivity"[^\/]*\/>\n?/g,
-        projectActivityEntry + "\n"
-      );
+      manifest = manifest.replace(/\s*<activity android:name="\.ProjectActivity"[^\/]*\/>\n?/g, projectActivityEntry + "\n");
+    }
+    if (!manifest.includes("PortraitCaptureActivity")) {
+      manifest = manifest.replace(/(\s*)(<\/application>)/, `${portraitCaptureEntry}
+$1$2`);
+    } else {
+      manifest = manifest.replace(/\s*<activity android:name="\.PortraitCaptureActivity"[^\/]*\/>\n?/g, portraitCaptureEntry + "\n");
     }
     fs6.writeFileSync(manifestPath, manifest);
     console.log("\u2705 Synced dev client (TemplateProvider, MainActivity, ProjectActivity, DevClientManager)");
   } else {
-    for (const f of ["DevClientManager.kt", "DevServerPrefs.kt", "ProjectActivity.kt"]) {
+    for (const f of ["DevClientManager.kt", "DevServerPrefs.kt", "ProjectActivity.kt", "PortraitCaptureActivity.kt"]) {
       try {
         fs6.rmSync(path6.join(kotlinDir, f));
       } catch {
@@ -1795,6 +1730,7 @@ $1$2`
     }
     let manifest = fs6.readFileSync(manifestPath, "utf-8");
     manifest = manifest.replace(/\s*<activity android:name="\.ProjectActivity"[^\/]*\/>\n?/g, "");
+    manifest = manifest.replace(/\s*<activity android:name="\.PortraitCaptureActivity"[^\/]*\/>\n?/g, "");
     fs6.writeFileSync(manifestPath, manifest);
     console.log('\u2705 Synced (dev client disabled - set dev.mode: "embedded" in tamer.config.json to enable)');
   }
@@ -3197,7 +3133,8 @@ function getLanIp() {
   }
   return "localhost";
 }
-async function startDevServer() {
+async function startDevServer(opts) {
+  const verbose = opts?.verbose ?? false;
   const resolved = resolveHostPaths();
   const { projectRoot, lynxProjectDir, lynxBundlePath, lynxBundleFile, config } = resolved;
   const distDir = path17.dirname(lynxBundlePath);
@@ -3310,14 +3247,34 @@ async function startDevServer() {
   });
   const wss = new WebSocketServer({ noServer: true });
   httpServer.on("upgrade", (request, socket, head) => {
-    if (request.url === `${basePath}/__hmr` || request.url === "/__hmr") {
+    const reqPath = (request.url || "").split("?")[0];
+    if (reqPath === `${basePath}/__hmr` || reqPath === "/__hmr" || reqPath.endsWith("/__hmr")) {
       wss.handleUpgrade(request, socket, head, (ws) => wss.emit("connection", ws, request));
     } else {
       socket.destroy();
     }
   });
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
+    const clientIp = req.socket.remoteAddress ?? "unknown";
+    console.log(`\x1B[90m[WS] client connected: ${clientIp}\x1B[0m`);
     ws.send(JSON.stringify({ type: "connected" }));
+    ws.on("close", () => {
+      console.log(`\x1B[90m[WS] client disconnected: ${clientIp}\x1B[0m`);
+    });
+    ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg?.type === "console_log" && Array.isArray(msg.message)) {
+          const skip = msg.message.includes("[rspeedy-dev-server]") || msg.message.includes("[HMR]");
+          if (skip) return;
+          const isJs = msg.tag === "lynx-console" || msg.tag == null;
+          if (!verbose && !isJs) return;
+          const prefix = isJs ? "\x1B[36m[APP]:\x1B[0m" : "\x1B[33m[NATIVE]:\x1B[0m";
+          console.log(prefix, ...msg.message);
+        }
+      } catch {
+      }
+    });
   });
   function broadcastReload() {
     wss.clients.forEach((client) => {
@@ -3374,6 +3331,7 @@ async function startDevServer() {
     const wsUrl = `ws://${lanIp}:${port}${basePath}/__hmr`;
     console.log(`
 \u{1F680} Tamer4Lynx dev server (${projectName})`);
+    if (verbose) console.log(`   Logs: \x1B[33mverbose\x1B[0m (native + JS)`);
     console.log(`   Bundle:  ${devUrl}/${lynxBundleFile}`);
     console.log(`   Meta:    ${devUrl}/meta.json`);
     console.log(`   HMR WS:  ${wsUrl}`);
@@ -3406,8 +3364,8 @@ async function startDevServer() {
 var devServer_default = startDevServer;
 
 // src/common/start.ts
-async function start() {
-  await devServer_default();
+async function start(opts) {
+  await devServer_default({ verbose: opts?.verbose });
 }
 var start_default = start;
 
@@ -3506,8 +3464,8 @@ var linkCmd = program.command("link").option("-i, --ios", "Link iOS native modul
   autolink_default2();
   autolink_default();
 });
-program.command("start").description("Start dev server with HMR and WebSocket support (Expo-like)").action(async () => {
-  await start_default();
+program.command("start").option("-v, --verbose", "Show all logs (native + JS); default shows JS only").description("Start dev server with HMR and WebSocket support (Expo-like)").action(async (opts) => {
+  await start_default({ verbose: opts.verbose });
 });
 program.command("build-dev-app").option("-p, --platform <platform>", "Platform: android, ios, or all (default)", "all").option("-i, --install", "Install APK to connected device after building").description("Build the standalone dev client app (requires tamer-dev-client). iOS stubbed until implemented.").action(async (opts) => {
   const p = opts.platform?.toLowerCase();

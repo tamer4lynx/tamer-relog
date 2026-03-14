@@ -141,9 +141,10 @@ const linkCmd = program.command('link')
 
 program
     .command('start')
+    .option('-v, --verbose', 'Show all logs (native + JS); default shows JS only')
     .description('Start dev server with HMR and WebSocket support (Expo-like)')
-    .action(async () => {
-        await start();
+    .action(async (opts) => {
+        await start({ verbose: opts.verbose });
     });
 
 program

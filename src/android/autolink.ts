@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { loadExtensionConfig, hasExtensionConfig, type NormalizedExtensionConfig } from '../common/config';
 import { resolveHostPaths } from '../common/hostConfig';
-import { getLynxExplorerInputSource } from './coreElements';
 
 const autolink = () => {
     interface DiscoveredPackage {
@@ -175,32 +174,7 @@ const autolink = () => {
         const kotlinExtensionsPath = path.join(generatedDir, 'GeneratedLynxExtensions.kt');
 
         const modulePackages = packages.filter(p => p.config.android?.moduleClassName);
-        const elementPackages = packages.filter(p => p.config.android?.elements && Object.keys(p.config.android.elements).length > 0)
-            .map(p => ({
-                ...p,
-                config: {
-                    ...p.config,
-                    android: {
-                        ...p.config.android,
-                        elements: Object.fromEntries(
-                            Object.entries(p.config.android!.elements!).filter(([tag]) => tag !== 'explorer-input' && tag !== 'input')
-                        ),
-                    },
-                },
-            }))
-            .filter(p => Object.keys(p.config.android?.elements ?? {}).length > 0);
-
-        const builtinElementImport = `import ${projectPackage}.core.LynxExplorerInput`;
-        const builtinElementRegistration = `        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("input") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return LynxExplorerInput(context)
-            }
-        })
-        LynxEnv.inst().addBehavior(object : com.lynx.tasm.behavior.Behavior("explorer-input") {
-            override fun createUI(context: com.lynx.tasm.behavior.LynxContext): com.lynx.tasm.behavior.ui.LynxUI<*> {
-                return LynxExplorerInput(context)
-            }
-        })`;
+        const elementPackages = packages.filter(p => p.config.android?.elements && Object.keys(p.config.android.elements).length > 0);
 
         const moduleImports = modulePackages
             .map(p => `import ${p.config.android!.moduleClassName}`)
@@ -229,13 +203,21 @@ const autolink = () => {
             })
         ).join('\n');
 
-        const allRegistrations = [moduleRegistrations, behaviorRegistrations, builtinElementRegistration].filter(Boolean).join('\n');
+        const allRegistrations = [moduleRegistrations, behaviorRegistrations].filter(Boolean).join('\n');
+
+        const hostViewPackages = modulePackages.filter(p => p.config.android?.attachHostView);
+        const hostViewLines = hostViewPackages.map(p => {
+            const simpleClassName = p.config.android!.moduleClassName!.split('.').pop()!;
+            return `        ${simpleClassName}.attachHostView(view)`;
+        }).join('\n');
+        const hostViewMethod = hostViewPackages.length > 0
+            ? `\n    fun onHostViewChanged(view: android.view.View?) {\n${hostViewLines}\n    }`
+            : '';
 
         const kotlinContent = `package ${projectPackage}.generated
 
 import android.content.Context
 import com.lynx.tasm.LynxEnv
-${builtinElementImport}
 ${moduleImports}
 ${elementImports}
 
@@ -246,7 +228,7 @@ ${elementImports}
 object GeneratedLynxExtensions {
     fun register(context: Context) {
 ${allRegistrations}
-    }
+    }${hostViewMethod}
 }
 `;
         // Ensure the `generated` directory exists before writing the file
@@ -270,15 +252,6 @@ ${allRegistrations}
 
         updateSettingsGradle(packages);
         updateAppBuildGradle(packages);
-
-        const coreDir = path.join(appAndroidPath, 'app', 'src', 'main', 'kotlin', packageName.replace(/\./g, '/'), 'core');
-        fs.mkdirSync(coreDir, { recursive: true });
-        fs.writeFileSync(path.join(coreDir, 'LynxExplorerInput.kt'), getLynxExplorerInputSource(packageName));
-        for (const name of ['ScreenElement', 'SafeAreaElement', 'AvoidKeyboardElement', 'AppBarElement']) {
-            const p = path.join(coreDir, `${name}.kt`);
-            if (fs.existsSync(p)) fs.unlinkSync(p);
-        }
-        console.log('✅ Synced built-in element (explorer-input)');
 
         generateKotlinExtensionsFile(packages, packageName);
 

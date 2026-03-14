@@ -27,5 +27,5 @@
     "noPropertyAccessFromIndexSignature": false
   },
   "include": ["src/**/*", "index.js"],
-  "exclude": ["node_modules", "dist", "packages"]
+  "exclude": ["node_modules", "dist"]
 }

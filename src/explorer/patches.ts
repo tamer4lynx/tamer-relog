@@ -75,6 +75,9 @@ import ${vars.packageName}.generated.GeneratedLynxExtensions;
 }
 
 function getLoadTemplateBody(vars: PatchVars): string {
+  const projectSegment = vars.projectRoot
+    ? vars.projectRoot.replace(/\\/g, "/").split("/").filter(Boolean).pop() ?? ""
+    : "";
   if (vars.devMode !== "embedded") {
     return `    @Override
     public void loadTemplate(String url, final Callback callback) {
@@ -96,6 +99,7 @@ function getLoadTemplateBody(vars: PatchVars): string {
     }`;
   }
   return `    private static final String DEV_CLIENT_BUNDLE = "dev-client.lynx.bundle";
+    private static final String PROJECT_BUNDLE_SEGMENT = "${projectSegment}";
 
     @Override
     public void loadTemplate(String url, final Callback callback) {
@@ -119,21 +123,30 @@ function getLoadTemplateBody(vars: PatchVars): string {
                 if (devUrl != null && !devUrl.isEmpty()) {
                     try {
                         java.net.URL u = new java.net.URL(devUrl);
-                        String base = u.getProtocol() + "://" + u.getHost() + (u.getPort() > 0 ? ":" + u.getPort() : ":3000") + (u.getPath() != null && !u.getPath().isEmpty() ? u.getPath() : "");
-                        String fetchUrl = base.endsWith("/") ? base + url : base + "/" + url;
+                        String origin = u.getProtocol() + "://" + u.getHost() + (u.getPort() > 0 ? ":" + u.getPort() : ":3000");
+                        String configuredPath = u.getPath() != null ? u.getPath() : "";
+                        configuredPath = configuredPath.replaceAll("/+$", "");
+
+                        java.util.ArrayList<String> candidatePaths = new java.util.ArrayList<>();
+                        if (!configuredPath.isEmpty()) candidatePaths.add(configuredPath + "/" + url);
+                        if (PROJECT_BUNDLE_SEGMENT != null && !PROJECT_BUNDLE_SEGMENT.isEmpty()) candidatePaths.add("/" + PROJECT_BUNDLE_SEGMENT + "/" + url);
+                        candidatePaths.add("/" + url);
+
                         okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
                             .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
                             .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
                             .build();
-                        okhttp3.Request request = new okhttp3.Request.Builder().url(fetchUrl).build();
-                        try (okhttp3.Response response = client.newCall(request).execute()) {
-                            if (response.isSuccessful() && response.body() != null) {
-                                callback.onSuccess(response.body().bytes());
-                                return;
+                        for (String candidatePath : candidatePaths) {
+                            String fetchUrl = origin + (candidatePath.startsWith("/") ? candidatePath : "/" + candidatePath);
+                            okhttp3.Request request = new okhttp3.Request.Builder().url(fetchUrl).build();
+                            try (okhttp3.Response response = client.newCall(request).execute()) {
+                                if (response.isSuccessful() && response.body() != null) {
+                                    callback.onSuccess(response.body().bytes());
+                                    return;
+                                }
                             }
-                            callback.onFailed("HTTP " + response.code() + " for " + fetchUrl);
-                            return;
                         }
+                        callback.onFailed("HTTP fetch failed for " + url + " via " + devUrl);
                     } catch (Exception e) {
                         callback.onFailed("Fetch failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
                         return;
@@ -253,7 +266,7 @@ export function getProjectActivity(vars: PatchVars): string {
 
   const devClientInit = hasDevClient
     ? `
-        devClientManager = DevClientManager(this) { lynxView?.renderTemplateUrl("main.lynx.bundle", "") }
+        devClientManager = DevClientManager(this) { reloadProjectView() }
         devClientManager?.connect()
 `
     : "";
@@ -272,10 +285,27 @@ import ${vars.packageName}.DevClientManager`
 import com.nanofuxion.tamerrouter.TamerRouterNativeModule`;
   const insetsImport = hasTamerInsets ? `
 import com.nanofuxion.tamerinsets.TamerInsetsModule` : "";
+  const insetsHandlerImport = hasTamerInsets ? `
+import android.os.Handler
+import android.os.Looper` : "";
   const insetsAttach = hasTamerInsets ? `
         TamerInsetsModule.attachHostView(lynxView)` : "";
   const insetsDetach = hasTamerInsets ? `
         TamerInsetsModule.attachHostView(null)` : "";
+  const insetsHandlerField = hasTamerInsets ? `
+    private val handler = Handler(Looper.getMainLooper())` : "";
+  const insetsDelayedOnCreate = hasTamerInsets
+    ? `
+        listOf(150L, 400L, 800L).forEach { delay ->
+            handler.postDelayed({ TamerInsetsModule.reRequestInsets() }, delay)
+        }`
+    : "";
+  const insetsOnWindowFocus = hasTamerInsets ? `
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) TamerInsetsModule.reRequestInsets()
+    }
+` : "";
 
   const insetsListenerBlock = hasTamerInsets
     ? ""
@@ -294,9 +324,65 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.core.view.ViewCompat`;
 
+  const insetsDelayedReload = hasTamerInsets && hasDevClient
+    ? `
+        listOf(150L, 400L, 800L).forEach { delay ->
+            handler.postDelayed({ TamerInsetsModule.reRequestInsets() }, delay)
+        }`
+    : "";
+  const reloadMethod = hasDevClient
+    ? `
+    private fun reloadProjectView() {
+        val oldView = lynxView
+        TamerRouterNativeModule.attachHostView(null)${insetsDetach}
+        oldView?.destroy()
+
+        val nextView = buildLynxView()
+        lynxView = nextView
+        setContentView(nextView)
+        TamerRouterNativeModule.attachHostView(nextView)${insetsAttach.replace("lynxView", "nextView")}
+        nextView.renderTemplateUrl("main.lynx.bundle", "")${insetsDelayedReload}
+    }
+`
+    : "";
+
+  const onResumeBlock = hasTamerInsets
+    ? `
+    override fun onResume() {
+        super.onResume()
+        lynxView?.let { TamerInsetsModule.reRequestInsets() }
+    }
+`
+    : "";
+
+  const touchBlurBlock = `
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) maybeClearFocusedInput(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun maybeClearFocusedInput(ev: MotionEvent) {
+        val focused = currentFocus
+        if (focused is EditText) {
+            val loc = IntArray(2)
+            focused.getLocationOnScreen(loc)
+            val x = ev.rawX.toInt()
+            val y = ev.rawY.toInt()
+            if (x < loc[0] || x > loc[0] + focused.width || y < loc[1] || y > loc[1] + focused.height) {
+                focused.clearFocus()
+                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(focused.windowToken, 0)
+            }
+        }
+    }
+`;
+
   return `package ${vars.packageName}
 
-import android.os.Bundle
+import android.os.Bundle${insetsHandlerImport}
+import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat${insetsImports}
@@ -305,7 +391,7 @@ import com.lynx.tasm.LynxViewBuilder${devClientImports}${routerImport}${insetsIm
 
 class ProjectActivity : AppCompatActivity() {
     private var lynxView: LynxView? = null
-${devClientField}
+${devClientField}${insetsHandlerField}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -313,9 +399,9 @@ ${devClientField}
         lynxView = buildLynxView()
         setContentView(lynxView)${insetsListenerBlock}
         TamerRouterNativeModule.attachHostView(lynxView)${insetsAttach}
-        lynxView?.renderTemplateUrl("main.lynx.bundle", "")${devClientInit}
+        lynxView?.renderTemplateUrl("main.lynx.bundle", "")${devClientInit}${insetsDelayedOnCreate}
     }
-
+${insetsOnWindowFocus}${reloadMethod}${onResumeBlock}${touchBlurBlock}
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         TamerRouterNativeModule.requestBack { consumed ->
@@ -341,7 +427,20 @@ ${devClientField}
 `;
 }
 
+export function getPortraitCaptureActivity(vars: PatchVars): string {
+  return `package ${vars.packageName}
+
+import com.journeyapps.barcodescanner.CaptureActivity
+
+class PortraitCaptureActivity : CaptureActivity()
+`;
+}
+
 export function getStandaloneMainActivity(vars: PatchVars): string {
+  const extensions = vars.projectRoot ? discoverNativeExtensions(vars.projectRoot) : [];
+  const hasTamerInsets = extensions.some((e) => e.packageName === "tamer-insets");
+  const hasTamerRouter = extensions.some((e) => e.packageName === "tamer-router");
+  const hasHostViewModules = extensions.some((e) => e.attachHostView);
   const hasDevClient = vars.devMode === "embedded";
   const devClientImports = hasDevClient
     ? `
@@ -366,7 +465,7 @@ import com.nanofuxion.tamerdevclient.DevClientModule
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
         DevClientModule.attachScanLauncher {
-            scanResultLauncher.launch(IntentIntegrator(this).setPrompt("Scan dev server QR").createScanIntent())
+            scanResultLauncher.launch(IntentIntegrator(this).setCaptureActivity(PortraitCaptureActivity::class.java).setPrompt("Scan dev server QR").createScanIntent())
         }
         DevClientModule.attachReloadProjectLauncher {
             startActivity(Intent(this@MainActivity, ProjectActivity::class.java).addFlags(
@@ -405,28 +504,128 @@ import com.nanofuxion.tamerdevclient.DevClientModule
     }
 `
     : "";
+  const routerImport = hasTamerRouter
+    ? `
+import com.nanofuxion.tamerrouter.TamerRouterNativeModule`
+    : "";
+  const insetsImport = hasTamerInsets
+    ? `
+import com.nanofuxion.tamerinsets.TamerInsetsModule`
+    : "";
+  const generatedExtImport = hasHostViewModules
+    ? `
+import ${vars.packageName}.generated.GeneratedLynxExtensions`
+    : "";
+  const insetsListenerBlock = hasTamerInsets
+    ? ""
+    : `
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
+            insets
+        }`;
+  const routerAttach = hasTamerRouter
+    ? `
+        TamerRouterNativeModule.attachHostView(lynxView)`
+    : "";
+  const insetsAttach = hasTamerInsets
+    ? `
+        TamerInsetsModule.attachHostView(lynxView)`
+    : "";
+  const generatedExtAttach = hasHostViewModules
+    ? `
+        GeneratedLynxExtensions.onHostViewChanged(lynxView)`
+    : "";
+  const generatedExtDetach = hasHostViewModules
+    ? `
+        GeneratedLynxExtensions.onHostViewChanged(null)`
+    : "";
+
   const devClientCleanup = hasDevClient
     ? `
-        override fun onDestroy() {
-            reloadReceiver?.let { unregisterReceiver(it) }
-            DevClientModule.attachReloadProjectLauncher(null)
-            DevClientModule.attachLynxView(null)
-            super.onDestroy()
-        }
+    override fun onDestroy() {
+        reloadReceiver?.let { unregisterReceiver(it) }${hasTamerRouter ? `
+        TamerRouterNativeModule.attachHostView(null)` : ""}${hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(null)` : ""}${generatedExtDetach}
+        lynxView?.destroy()
+        lynxView = null
+        DevClientModule.attachReloadProjectLauncher(null)
+        DevClientModule.attachLynxView(null)
+        super.onDestroy()
+    }
 `
     : "";
+  const backOverride = hasTamerRouter
+    ? `
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        TamerRouterNativeModule.requestBack { consumed ->
+            if (!consumed) {
+                runOnUiThread { super.onBackPressed() }
+            }
+        }
+    }
+`
+    : "";
+
+  const onPauseBlock = (hasTamerInsets && hasDevClient) || hasHostViewModules
+    ? `
+    override fun onPause() {
+        super.onPause()${hasTamerInsets ? `
+        TamerInsetsModule.attachHostView(null)` : ""}${generatedExtDetach}
+    }
+`
+    : "";
+  const onResumeBlock = hasTamerInsets || hasHostViewModules
+    ? `
+    override fun onResume() {
+        super.onResume()
+        lynxView?.let {${hasTamerInsets ? `
+            TamerInsetsModule.attachHostView(it)
+            TamerInsetsModule.reRequestInsets()` : ""}${hasHostViewModules ? `
+            GeneratedLynxExtensions.onHostViewChanged(it)` : ""}
+        }
+    }
+`
+    : "";
+
+  const touchBlurBlockMain = `
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN) maybeClearFocusedInput(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun maybeClearFocusedInput(ev: MotionEvent) {
+        val focused = currentFocus
+        if (focused is EditText) {
+            val loc = IntArray(2)
+            focused.getLocationOnScreen(loc)
+            val x = ev.rawX.toInt()
+            val y = ev.rawY.toInt()
+            if (x < loc[0] || x > loc[0] + focused.width || y < loc[1] || y > loc[1] + focused.height) {
+                focused.clearFocus()
+                (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(focused.windowToken, 0)
+            }
+        }
+    }
+`;
 
   return `package ${vars.packageName}
 
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
 import com.lynx.tasm.LynxView
-import com.lynx.tasm.LynxViewBuilder${devClientImports}
+import com.lynx.tasm.LynxViewBuilder${devClientImports}${routerImport}${insetsImport}${generatedExtImport}
 
 class MainActivity : AppCompatActivity() {
 ${devClientField}    private var lynxView: LynxView? = null
@@ -436,16 +635,11 @@ ${devClientField}    private var lynxView: LynxView? = null
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         lynxView = buildLynxView()
-        setContentView(lynxView)
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(lynxView!!) { view, insets ->
-            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            view.updatePadding(bottom = if (imeVisible) imeHeight else 0)
-            insets
-        }
+        setContentView(lynxView)${insetsListenerBlock}${routerAttach}${insetsAttach}${generatedExtAttach}
         ${devClientUriInit}lynxView?.renderTemplateUrl(${hasDevClient ? 'currentUri' : 'uri'}, "")${devClientInit}
     }
-
+${onPauseBlock}${onResumeBlock}${touchBlurBlockMain}
+${backOverride}
     private fun buildLynxView(): LynxView {
         val viewBuilder = LynxViewBuilder()
         viewBuilder.setTemplateProvider(TemplateProvider(this))

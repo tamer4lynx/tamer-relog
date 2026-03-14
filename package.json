@@ -27,7 +27,8 @@
     "packages/tamer-router",
     "packages/tamer-screen",
     "packages/tamer-system-ui",
-    "packages/tamer-app-shell"
+    "packages/tamer-app-shell",
+    "packages/tamer-text-input"
   ],
   "keywords": [
     "lynx",

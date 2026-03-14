@@ -21,7 +21,8 @@ function getLanIp(): string {
   return 'localhost';
 }
 
-async function startDevServer() {
+async function startDevServer(opts?: { verbose?: boolean }) {
+  const verbose = opts?.verbose ?? false;
   const resolved = resolveHostPaths();
   const { projectRoot, lynxProjectDir, lynxBundlePath, lynxBundleFile, config } = resolved;
   const distDir = path.dirname(lynxBundlePath);
@@ -137,15 +138,36 @@ async function startDevServer() {
 
   const wss = new WebSocketServer({ noServer: true });
   httpServer.on('upgrade', (request, socket, head) => {
-    if (request.url === `${basePath}/__hmr` || request.url === '/__hmr') {
+    const reqPath = (request.url || '').split('?')[0];
+    if (reqPath === `${basePath}/__hmr` || reqPath === '/__hmr' || reqPath.endsWith('/__hmr')) {
       wss.handleUpgrade(request, socket, head, (ws) => wss.emit('connection', ws, request));
     } else {
       socket.destroy();
     }
   });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    const clientIp = req.socket.remoteAddress ?? 'unknown';
+    console.log(`\x1b[90m[WS] client connected: ${clientIp}\x1b[0m`);
     ws.send(JSON.stringify({ type: 'connected' }));
+    ws.on('close', () => {
+      console.log(`\x1b[90m[WS] client disconnected: ${clientIp}\x1b[0m`);
+    });
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg?.type === 'console_log' && Array.isArray(msg.message)) {
+          const skip = msg.message.includes('[rspeedy-dev-server]') || msg.message.includes('[HMR]');
+          if (skip) return;
+          const isJs = msg.tag === 'lynx-console' || msg.tag == null;
+          if (!verbose && !isJs) return;
+          const prefix = isJs ? '\x1b[36m[APP]:\x1b[0m' : '\x1b[33m[NATIVE]:\x1b[0m';
+          console.log(prefix, ...msg.message);
+        }
+      } catch {
+        /* ignore */
+      }
+    });
   });
 
   function broadcastReload() {
@@ -207,6 +229,7 @@ async function startDevServer() {
     const devUrl = `http://${lanIp}:${port}${basePath}`;
     const wsUrl = `ws://${lanIp}:${port}${basePath}/__hmr`;
     console.log(`\n🚀 Tamer4Lynx dev server (${projectName})`);
+    if (verbose) console.log(`   Logs: \x1b[33mverbose\x1b[0m (native + JS)`);
     console.log(`   Bundle:  ${devUrl}/${lynxBundleFile}`);
     console.log(`   Meta:    ${devUrl}/meta.json`);
     console.log(`   HMR WS:  ${wsUrl}`);

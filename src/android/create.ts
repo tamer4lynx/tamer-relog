@@ -11,7 +11,6 @@ import {
   getStandaloneMainActivity,
 } from "../explorer/patches";
 import { getDevServerPrefs } from "../explorer/devLauncher";
-import { getLynxExplorerInputSource } from "./coreElements";
 
 function findRepoRoot(start: string): string {
   let dir = path.resolve(start);
@@ -412,8 +411,6 @@ object GeneratedLynxExtensions {
     if (hasDevLauncher) {
       writeFile(path.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
     }
-    const coreDir = path.join(kotlinDir, "core");
-    writeFile(path.join(coreDir, "LynxExplorerInput.kt"), getLynxExplorerInputSource(packageName));
     const devClientManagerSource = getDevClientManager(vars);
     if (devClientManagerSource) {
       writeFile(path.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);

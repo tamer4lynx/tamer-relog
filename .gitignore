@@ -45,3 +45,6 @@ packages/*/android/.settings
 # temporarily ignore these files
 /base
 /reference
+
+# local scripts
+scripts/build-tamer-packages.sh

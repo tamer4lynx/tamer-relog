@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { useTamerRouter } from 'tamer-router'
+import { Icon } from 'tamer-icons'
 
 import '../App.css'
 import lynxLogo from '../assets/lynx-logo.png?inline'
@@ -13,6 +14,7 @@ export default function Home() {
 
   useEffect(() => {
     'background only'
+    console.log('Home mounted')
     const websocket = new WebSocket('ws://localhost:8008')
     websocket.onopen = () => websocket.send('Hello from Lynx!')
     websocket.onmessage = (event) => setMessages((prev) => [...prev, { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`, text: event.data }])
@@ -24,15 +26,15 @@ export default function Home() {
 
   const onTap = useCallback(() => {
     'background only'
+    console.log('onTap')
     setAlterLogo((prev) => !prev)
     NativeModules.JiggleModule?.vibrate?.(50)
+    console.log('pushing to /about')
     push('/about')
     if (ws) ws.send('Hello from Lynx tap!')
   }, [push, ws])
 
   return (
-    <view>
-      <view className="Background" />
       <view className="App">
         <view className="Banner">
           <view className="Logo" bindtap={onTap}>
@@ -56,9 +58,12 @@ export default function Home() {
           <view className="Button" bindtap={() => push('/screen')} style={{ marginTop: 12 }}>
             <text className="ButtonText">tamer-screen</text>
           </view>
+          <view className="Button" style={{ display: 'flex', height: 128, width: "85vw", backgroundColor: 'red', flexDirection: 'row', gap: 16, marginTop: 16, justifyContent: 'center', alignItems: 'center' }}>
+            <Icon name="search" set="material" size={80} color="#ffffff" />
+            <Icon name="home" set="material" size={128} color="#fff" />
+            <Icon name="heart" set="fontawesome" size={52} color="#000" />
+          </view>
         </view>
-        <view style={{ flex: 1 }} />
       </view>
-    </view>
   )
 }

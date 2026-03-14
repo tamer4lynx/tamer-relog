@@ -6,17 +6,8 @@ export default function InsetsPage() {
   const keyboard = useKeyboard()
   const [inputValue, setInputValue] = useState('')
 
-  const handleInput = (e: { value?: string; detail?: { value?: string } }) => {
-    'background only'
-    const val = e.detail?.value ?? e.value ?? ''
-    setInputValue(val)
-  }
-
   return (
     <view style={{ minHeight: '100vh', backgroundColor: '#000', display: 'flex', flexDirection: 'column' }}>
-      <view style={{ backgroundColor: '#333', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 16, paddingBottom: 16, paddingLeft: 16, paddingTop: insets.top }}>
-        <text style={{ color: '#fff', fontWeight: 'bold' }}>System Insets</text>
-      </view>
 
       <scroll-view style={{ padding: 16, display: 'flex', flexDirection: 'column' }}>
         <view style={{ backgroundColor: '#1a1a1a', borderRadius: 12, padding: 16, marginBottom: 16, border: '1px solid #333' }}>
@@ -36,7 +27,15 @@ export default function InsetsPage() {
         </view>
 
         <view style={{ marginTop: 20 }}>
-          <explorer-input style={{ backgroundColor: '#222', height: 72, border: '1px solid #444', borderRadius: 8, padding: 12, color: '#fff' }} placeholder="Tap here to show keyboard" value={inputValue} bindinput={handleInput} />
+          <tamer-input
+            multiline
+            value={inputValue}
+            color="#ffffff"
+            placeholder-color="#777777"
+            placeholder="Tap here to show keyboard"
+            style={{ backgroundColor: '#222', minHeight: 96, border: '1px solid #444', borderRadius: 12, padding: "8px" }}
+            bindinput={(e: { detail?: { value?: string }; value?: string }) => setInputValue(e?.detail?.value ?? e?.value ?? '')}
+          />
         </view>
 
         <view style={{ backgroundColor: '#1a1a1a', borderRadius: 12, padding: 16, marginBottom: 16, border: '1px solid #333', marginTop: 20 }}>
@@ -78,8 +77,6 @@ export default function InsetsPage() {
           {keyboard.visible ? 'Keyboard is Visible' : 'Keyboard is Hidden'}
         </text>
       </view>
-      <view style={{ height: keyboard.height + 5, backgroundColor: 'yellow', position: 'absolute', bottom: 0, left: 0, right: 0 }} />
-      <view style={{ height: insets.bottom, backgroundColor: 'green', bottom: 0, left: 0, right: 0, marginTop: 'auto' }} />
     </view>
   )
 }

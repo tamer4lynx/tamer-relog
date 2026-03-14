@@ -4,6 +4,7 @@ import { resolveHostPaths } from "../common/hostConfig";
 import {
   fetchAndPatchTemplateProvider,
   getDevClientManager,
+  getPortraitCaptureActivity,
   getProjectActivity,
   getStandaloneMainActivity,
 } from "../explorer/patches";
@@ -38,7 +39,7 @@ async function syncDevClient() {
       }
     : undefined;
 
-  const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.lynxProjectDir };
+  const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.projectRoot };
 
   const [templateProviderSource] = await Promise.all([
     fetchAndPatchTemplateProvider(vars),
@@ -55,27 +56,29 @@ async function syncDevClient() {
     fs.writeFileSync(path.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
     fs.writeFileSync(path.join(kotlinDir, "DevServerPrefs.kt"), getDevServerPrefs(vars));
     fs.writeFileSync(path.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
+    fs.writeFileSync(path.join(kotlinDir, "PortraitCaptureActivity.kt"), getPortraitCaptureActivity(vars));
     let manifest = fs.readFileSync(manifestPath, "utf-8");
     const projectActivityEntry = '        <activity android:name=".ProjectActivity" android:exported="false" android:taskAffinity="" android:launchMode="singleTask" android:documentLaunchMode="always" />';
+    const portraitCaptureEntry = '        <activity android:name=".PortraitCaptureActivity" android:screenOrientation="portrait" android:stateNotNeeded="true" android:theme="@style/zxing_CaptureTheme" android:windowSoftInputMode="stateAlwaysHidden" />';
     if (!manifest.includes("ProjectActivity")) {
-      manifest = manifest.replace(
-        /(\s*)(<\/application>)/,
-        `${projectActivityEntry}\n$1$2`
-      );
+      manifest = manifest.replace(/(\s*)(<\/application>)/, `${projectActivityEntry}\n$1$2`);
     } else {
-      manifest = manifest.replace(
-        /\s*<activity android:name="\.ProjectActivity"[^\/]*\/>\n?/g,
-        projectActivityEntry + "\n"
-      );
+      manifest = manifest.replace(/\s*<activity android:name="\.ProjectActivity"[^\/]*\/>\n?/g, projectActivityEntry + "\n");
+    }
+    if (!manifest.includes("PortraitCaptureActivity")) {
+      manifest = manifest.replace(/(\s*)(<\/application>)/, `${portraitCaptureEntry}\n$1$2`);
+    } else {
+      manifest = manifest.replace(/\s*<activity android:name="\.PortraitCaptureActivity"[^\/]*\/>\n?/g, portraitCaptureEntry + "\n");
     }
     fs.writeFileSync(manifestPath, manifest);
     console.log("✅ Synced dev client (TemplateProvider, MainActivity, ProjectActivity, DevClientManager)");
   } else {
-    for (const f of ["DevClientManager.kt", "DevServerPrefs.kt", "ProjectActivity.kt"]) {
+    for (const f of ["DevClientManager.kt", "DevServerPrefs.kt", "ProjectActivity.kt", "PortraitCaptureActivity.kt"]) {
       try { fs.rmSync(path.join(kotlinDir, f)); } catch { /* ignore */ }
     }
     let manifest = fs.readFileSync(manifestPath, "utf-8");
     manifest = manifest.replace(/\s*<activity android:name="\.ProjectActivity"[^\/]*\/>\n?/g, "");
+    manifest = manifest.replace(/\s*<activity android:name="\.PortraitCaptureActivity"[^\/]*\/>\n?/g, "");
     fs.writeFileSync(manifestPath, manifest);
     console.log("✅ Synced (dev client disabled - set dev.mode: \"embedded\" in tamer.config.json to enable)");
   }

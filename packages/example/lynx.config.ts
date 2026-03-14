@@ -11,7 +11,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default {
   source: {
     alias: {
+      'tamer-app-shell': path.resolve(__dirname, '../tamer-app-shell/src/index.tsx'),
       'tamer-screen': path.resolve(__dirname, '../tamer-screen/src/index.tsx'),
+      'tamer-icons': path.resolve(__dirname, '../tamer-icons/src/index.tsx'),
     },
   },
   plugins: [
