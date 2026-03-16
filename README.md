@@ -28,21 +28,15 @@ t4l start
 t4l android build --install
 ```
 
-### Cloning with Submodules
-
-This repo includes native modules and host templates as git submodules. Clone with:
+### Clone the repo
 
 ```bash
-git clone --recurse-submodules https://github.com/tamer4lynx/tamer4lynx.git
+git clone https://github.com/tamer4lynx/tamer4lynx.git
+cd tamer4lynx
+npm install
 ```
 
-If you already have a clone:
-
-```bash
-git submodule update --init --recursive
-```
-
-Submodules include: `jiggle`, `lynxwebsockets`, `tamer-dev-app`, `tamer-dev-client`, `tamer-host`, `tamer-plugin`, `tamer-router`, and UI/platform packages.
+Native modules are workspace packages and are installed with `npm install`.
 
 Tamer4Lynx uses configuration files to manage your project.
 
@@ -300,7 +294,7 @@ Extensions are discovered via **lynx.ext.json** (RFC standard) or **tamer.json**
 
 ## Native Module References
 
-These modules are included as git submodules. Run `t4l link` after adding to your app.
+These modules are workspace packages. Run `t4l link` after adding to your app.
 
 | Package | Description |
 |---------|-------------|
