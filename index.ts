@@ -5,9 +5,14 @@ import fs from 'fs';
 import path from 'path';
 
 import { program } from 'commander';
-// Make sure you have a package.json file in the same directory
-// with a "version" field for this import to work.
 import { version } from './package.json';
+
+function validateDebugRelease(debug: boolean, release: boolean) {
+    if (debug && release) {
+        console.error('Cannot use --debug and --release together.');
+        process.exit(1);
+    }
+}
 import android_create from './src/android/create';
 import android_autolink from './src/android/autolink';
 import android_bundle from './src/android/bundle';
@@ -21,7 +26,8 @@ import init from './src/common/init';
 import create from './src/common/create';
 import codegen from './src/common/codegen';
 import start from './src/common/start';
-import buildDevApp from './src/common/buildDevApp';
+import { injectHostAndroid, injectHostIos } from './src/common/injectHost';
+import buildEmbeddable from './src/common/buildEmbeddable';
 
 program
     .version(version)
@@ -59,19 +65,32 @@ android
 android
     .command('bundle')
     .option('-t, --target <target>', 'Bundle target: host (default) or dev-app', 'host')
+    .option('-d, --debug', 'Build debug (development) bundle')
+    .option('-r, --release', 'Build release (production) bundle')
     .description('Build Lynx bundle and copy to Android assets (runs autolink first)')
     .action(async (opts) => {
-        await android_bundle({ target: opts.target });
+        validateDebugRelease(opts.debug, opts.release);
+        const release = opts.release === true;
+        await android_bundle({ target: opts.target, release });
     });
 
-android
+const androidBuildCmd = android
     .command('build')
-    .option('-i, --install', 'Install APK to connected device after building')
+    .option('-i, --install', 'Install APK to connected device and launch app after building')
     .option('-t, --target <target>', 'Build target: host (default) or dev-app', 'host')
+    .option('-e, --embeddable', 'Build for embedding in existing app (host only). Use with --release for production-ready embeddable.')
+    .option('-d, --debug', 'Build debug (development) APK')
     .option('-r, --release', 'Build release (production) APK')
     .description('Build APK (autolink + bundle + gradle)')
-    .action(async (opts) => {
-        await android_build({ install: opts.install, target: opts.target, release: opts.release });
+    .action(async () => {
+        const opts = androidBuildCmd.opts();
+        validateDebugRelease(opts.debug, opts.release);
+        const release = opts.release === true;
+        if (opts.embeddable) {
+            await buildEmbeddable({ release: true });
+            return;
+        }
+        await android_build({ install: opts.install, target: opts.target, release });
     });
 
 android
@@ -79,6 +98,14 @@ android
     .description('Sync dev client files (TemplateProvider, MainActivity, DevClientManager) from tamer.config.json')
     .action(async () => {
         await android_syncDevClient();
+    });
+
+android
+    .command('inject')
+    .option('-f, --force', 'Overwrite existing files')
+    .description('Inject tamer-host templates into an existing Android project')
+    .action(async (opts) => {
+        await injectHostAndroid({ force: opts.force });
     });
 
 
@@ -93,6 +120,13 @@ ios.command('create')
         ios_create();
     });
 
+ios.command('inject')
+    .option('-f, --force', 'Overwrite existing files')
+    .description('Inject tamer-host templates into an existing iOS project')
+    .action(async (opts) => {
+        await injectHostIos({ force: opts.force });
+    });
+
 
 ios.command('link')
     .description('Link native modules to the iOS project')
@@ -103,18 +137,31 @@ ios.command('link')
 
 ios.command('bundle')
     .option('-t, --target <target>', 'Bundle target: host (default) or dev-app', 'host')
+    .option('-d, --debug', 'Build debug (development) bundle')
+    .option('-r, --release', 'Build release (production) bundle')
     .description('Build Lynx bundle and copy to iOS project (runs autolink first)')
     .action((opts) => {
-        ios_bundle({ target: opts.target });
+        validateDebugRelease(opts.debug, opts.release);
+        const release = opts.release === true;
+        ios_bundle({ target: opts.target, release });
     });
 
-ios.command('build')
+const iosBuildCmd = ios.command('build')
     .option('-t, --target <target>', 'Build target: host (default) or dev-app', 'host')
+    .option('-e, --embeddable', 'Output bundle + code snippets to embeddable/ for adding LynxView to an existing app. Use with --release.')
     .option('-i, --install', 'Install and launch on booted simulator after building')
+    .option('-d, --debug', 'Build debug (development) configuration')
     .option('-r, --release', 'Build release (production) configuration')
     .description('Build iOS app (autolink + bundle + xcodebuild)')
-    .action((opts) => {
-        ios_build({ target: opts.target, install: opts.install, release: opts.release });
+    .action(async () => {
+        const opts = iosBuildCmd.opts();
+        validateDebugRelease(opts.debug, opts.release);
+        const release = opts.release === true;
+        if (opts.embeddable) {
+            await buildEmbeddable({ release: true });
+            return;
+        }
+        await ios_build({ target: opts.target, install: opts.install, release });
     });
 
 const linkCmd = program.command('link')
@@ -150,15 +197,49 @@ program
         await start({ verbose: opts.verbose });
     });
 
+const buildCmd = program
+    .command('build')
+    .option('-p, --platform <platform>', 'android, ios, or all (default: all)', 'all')
+    .option('-t, --target <target>', 'host or dev-app (default: dev-app)', 'dev-app')
+    .option('-e, --embeddable', 'Output bundle + code snippets to embeddable/ for adding LynxView to an existing app. Use with --release.')
+    .option('-d, --debug', 'Debug build (default)')
+    .option('-r, --release', 'Release build')
+    .option('-i, --install', 'Install after building')
+    .description('Build app (unified: delegates to android/ios build)')
+    .action(async () => {
+        const opts = buildCmd.opts();
+        validateDebugRelease(opts.debug, opts.release);
+        const release = opts.release === true;
+        if (opts.embeddable) {
+            await buildEmbeddable({ release: true });
+            return;
+        }
+        const p = opts.platform?.toLowerCase();
+        const platform = p === 'ios' || p === 'android' ? p : 'all';
+        const target = opts.target ?? 'dev-app';
+        if (platform === 'android' || platform === 'all') {
+            await android_build({ install: opts.install, target, release });
+        }
+        if (platform === 'ios' || platform === 'all') {
+            await ios_build({ target, install: opts.install, release });
+        }
+    });
+
 program
     .command('build-dev-app')
     .option('-p, --platform <platform>', 'Platform: android, ios, or all (default)', 'all')
-    .option('-i, --install', 'Install APK to connected device after building')
-    .description('Build the standalone dev client app (requires tamer-dev-client). iOS stubbed until implemented.')
+    .option('-i, --install', 'Install APK to connected device and launch app after building')
+    .description('(Deprecated) Use: t4l build --platform <platform> --install')
     .action(async (opts) => {
+        console.warn('⚠️  build-dev-app is deprecated. Use: t4l build --platform <platform> [--install]');
         const p = opts.platform?.toLowerCase();
         const platform = p === 'ios' || p === 'android' ? p : 'all';
-        await buildDevApp({ platform, install: opts.install });
+        if (platform === 'android' || platform === 'all') {
+            await android_build({ install: opts.install, target: 'dev-app', release: false });
+        }
+        if (platform === 'ios' || platform === 'all') {
+            await ios_build({ target: 'dev-app', install: opts.install, release: false });
+        }
     });
 
 program
@@ -174,8 +255,9 @@ program
     });
 
 program
-    .command('autolink')
-    .description('Auto-link native modules to the project')
+    .command('autolink-toggle')
+    .alias('autolink')
+    .description('Toggle autolink on/off in tamer.config.json (controls postinstall linking)')
     .action(async () => {
         const configPath = path.join(process.cwd(), 'tamer.config.json');
         let config: any = {};

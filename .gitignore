@@ -33,7 +33,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# native 
+# native
 /gradle
 /ios
 /android
@@ -41,6 +41,17 @@ src/android/gradle
 packages/*/android/.gradle
 packages/*/android/build
 packages/*/android/.settings
+packages/*/ios/build
+packages/*/ios/Pods
+packages/*/ios/*.xcworkspace/xcuserdata
+packages/*/ios/*.xcodeproj/xcuserdata
+packages/*/ios/*.xcodeproj/project.xcworkspace/xcuserdata
+
+# embeddable build
+embeddable/android/build
+embeddable/android/.gradle
+embeddable/android/lib/build
+embeddable/ios/build
 
 # temporarily ignore these files
 /base

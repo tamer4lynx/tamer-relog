@@ -176,13 +176,25 @@ t4l android build --release
 t4l ios build --debug --install
 ```
 
-#### Build Dev App (when tamer-dev-client is installed)
-
-Equivalent to `android build --target dev-app` or `ios build --target dev-app`:
+#### Unified build (dev-app default)
 
 ```bash
-t4l build-dev-app
-t4l build-dev-app --install
+t4l build
+t4l build --platform android --install
+t4l build --platform ios --install
+```
+
+For host (production) builds, use `--target host`:
+
+```bash
+t4l build --platform android --target host --install
+t4l build --platform android --target host --release
+```
+
+For embedding Lynx into an existing app (outputs bundle + code snippets to `embeddable/`):
+
+```bash
+t4l build --embeddable --release
 ```
 
 ---

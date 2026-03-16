@@ -29,17 +29,22 @@ export interface IosUrlSchemeConfig {
   role?: string;
 }
 
+const DEFAULT_ABI_FILTERS = ['armeabi-v7a', 'arm64-v8a'];
+const DEFAULT_IOS_ARCHITECTURES = ['arm64'];
+
 export interface HostConfig {
   android?: {
     appName?: string;
     packageName?: string;
     sdk?: string;
     deepLinks?: DeepLinkConfig[];
+    abiFilters?: string[];
   };
   ios?: {
     appName?: string;
     bundleId?: string;
     urlSchemes?: IosUrlSchemeConfig[];
+    architectures?: string[];
   };
   icon?: string | HostConfigIcon;
   paths?: HostConfigPaths;
@@ -185,10 +190,27 @@ function discoverLynxProject(cwd: string, explicitPath?: string): { dir: string;
   return null;
 }
 
-function findDevAppPackage(projectRoot: string): string | null {
+export function findRepoRoot(start: string): string {
+  let dir = path.resolve(start);
+  const root = path.parse(dir).root;
+  while (dir !== root) {
+    const pkgPath = path.join(dir, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        if (pkg.workspaces) return dir;
+      } catch {}
+    }
+    dir = path.dirname(dir);
+  }
+  return start;
+}
+
+export function findDevAppPackage(projectRoot: string): string | null {
   const candidates = [
     path.join(projectRoot, 'node_modules', 'tamer-dev-app'),
     path.join(projectRoot, 'packages', 'tamer-dev-app'),
+    path.join(path.dirname(projectRoot), 'tamer-dev-app'),
   ];
   for (const pkg of candidates) {
     if (fs.existsSync(pkg) && fs.existsSync(path.join(pkg, 'package.json'))) {
@@ -271,6 +293,14 @@ export function resolveHostPaths(cwd: string = process.cwd()): ResolvedPaths & {
     devClientBundlePath,
     config,
   };
+}
+
+export function resolveAbiFilters(config: HostConfig): string[] {
+  return config.android?.abiFilters ?? DEFAULT_ABI_FILTERS;
+}
+
+export function resolveIosArchitectures(config: HostConfig): string[] {
+  return config.ios?.architectures ?? DEFAULT_IOS_ARCHITECTURES;
 }
 
 export function resolveDevMode(config: HostConfig): DevMode {

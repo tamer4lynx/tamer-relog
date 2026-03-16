@@ -1,4 +1,5 @@
 import { useState } from '@lynx-js/react'
+import { px } from 'tamer-app-shell'
 import { Screen, SafeArea, AvoidKeyboard, useInsets, useKeyboard } from 'tamer-screen'
 
 export default function ScreenPage() {
@@ -15,11 +16,11 @@ export default function ScreenPage() {
       <scroll-view scroll-y style={{ display: 'flex', flexDirection: 'column', flex: 1, flexGrow: 1, flexShrink: 1, minHeight: 0 }}>
 
 
-        <view style={{ display: 'flex', flexDirection: 'column', paddingLeft: '16px', paddingRight: '16px', height: '100%', justifyContent: 'space-around' }}>
+        <view style={{ display: 'flex', flexDirection: 'column', padding: '16px 16px', height: '100%', justifyContent: 'flex-start', gap: '12px' }}>
 
 
 
-          <view style={{ display: 'flex', minHeight: 360, flexDirection: 'column', backgroundColor: '#1a1a1a', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #333' }}>
+          <view style={{ display: 'flex', flex: "0 1 auto", minHeight: "8rem", flexDirection: 'column', backgroundColor: '#1a1a1a', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #333' }}>
             <text style={{ color: '#fff', fontWeight: 'bold', marginBottom: '8px' }}>Insets (raw px)</text>
             <view style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginBottom: '4px' }}>
               <text style={{ color: '#aaa' }}>Top:</text>
@@ -39,7 +40,7 @@ export default function ScreenPage() {
             </view>
           </view>
 
-          <view style={{ display: 'flex', minHeight: 240, flexDirection: 'column', backgroundColor: '#1a1a1a', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #333' }}>
+          <view style={{ display: 'flex', flex: "0 1 auto", minHeight: "7rem", flexDirection: 'column', backgroundColor: '#1a1a1a', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #333' }}>
             <text style={{ color: '#fff', fontWeight: 'bold', marginBottom: '8px' }}>Keyboard</text>
             <view style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', marginBottom: '4px' }}>
               <text style={{ color: '#aaa' }}>Visible:</text>
@@ -51,7 +52,7 @@ export default function ScreenPage() {
             </view>
           </view>
 
-          <view style={{ display: 'flex', minHeight: 360, flexDirection: 'column', backgroundColor: '#1a1a1a', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #333' }}>
+          <view style={{ display: 'flex', flex: "0 1 auto", minHeight: "10rem", flexDirection: 'column', backgroundColor: '#1a1a1a', borderRadius: '12px', padding: '16px', marginBottom: '12px', border: '1px solid #333' }}>
             <text style={{ color: '#fff', fontWeight: 'bold', marginBottom: '8px' }}>About these components</text>
             <text style={{ color: '#aaa', lineHeight: '24px' }}>
               {'<Screen> is the root full-screen container.\n<SafeArea> adds inset padding to clear the status bar and home indicator.\n<AvoidKeyboard> shifts content above the keyboard.'}

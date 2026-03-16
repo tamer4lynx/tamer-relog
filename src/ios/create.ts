@@ -3,7 +3,15 @@ import path from "path";
 import { execSync } from "child_process";
 import { setupCocoaPods } from "./getPod";
 import { randomBytes } from "crypto";
-import { loadHostConfig, resolveIconPaths } from "../common/hostConfig";
+import { loadHostConfig, resolveIconPaths, findTamerHostPackage } from "../common/hostConfig";
+
+function readAndSubstituteTemplate(templatePath: string, vars: Record<string, string>): string {
+	const raw = fs.readFileSync(templatePath, "utf-8");
+	return Object.entries(vars).reduce(
+		(s, [k, v]) => s.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v),
+		raw
+	);
+}
 
 const create = () => {
 	const generateId = () => randomBytes(12).toString('hex').toUpperCase();
@@ -139,8 +147,18 @@ post_install do |installer|
 end
 	`);
 
-	// --- App Files (same as before) ---
-	writeFile(path.join(projectDir, "AppDelegate.swift"), `
+	const hostPkg = findTamerHostPackage(process.cwd());
+	const templateVars = { PACKAGE_NAME: bundleId, APP_NAME: appName, BUNDLE_ID: bundleId };
+	if (hostPkg) {
+		const templateDir = path.join(hostPkg, "ios", "templates");
+		for (const f of ["AppDelegate.swift", "SceneDelegate.swift", "ViewController.swift", "LynxProvider.swift", "LynxInitProcessor.swift"]) {
+			const srcPath = path.join(templateDir, f);
+			if (fs.existsSync(srcPath)) {
+				writeFile(path.join(projectDir, f), readAndSubstituteTemplate(srcPath, templateVars));
+			}
+		}
+	} else {
+		writeFile(path.join(projectDir, "AppDelegate.swift"), `
 import UIKit
 
 @UIApplicationMain
@@ -155,7 +173,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   }
 }
 	`);
-	writeFile(path.join(projectDir, "SceneDelegate.swift"), `
+		writeFile(path.join(projectDir, "SceneDelegate.swift"), `
 import UIKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -169,7 +187,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   }
 }
 	`);
-	writeFile(path.join(projectDir, "ViewController.swift"), `
+		writeFile(path.join(projectDir, "ViewController.swift"), `
 import UIKit
 import Lynx
 import tamerinsets
@@ -239,7 +257,7 @@ class ViewController: UIViewController {
   }
 }
 	`);
-	writeFile(path.join(projectDir, "LynxProvider.swift"), `
+		writeFile(path.join(projectDir, "LynxProvider.swift"), `
 import Foundation
 
 class LynxProvider: NSObject, LynxTemplateProvider {
@@ -258,8 +276,7 @@ class LynxProvider: NSObject, LynxTemplateProvider {
     }
 }
 	`);
-	// LynxInitProcessor.swift - provides a hook for autolinked native module registrations
-	writeFile(path.join(projectDir, "LynxInitProcessor.swift"), `
+		writeFile(path.join(projectDir, "LynxInitProcessor.swift"), `
 // Copyright 2024 The Lynx Authors. All rights reserved.
 // Licensed under the Apache License Version 2.0 that can be found in the
 // LICENSE file in the root directory of this source tree.
@@ -282,30 +299,23 @@ final class LynxInitProcessor {
 	}
 
 	private func setupLynxEnv() {
-		// Ensure LynxEnv singleton is initialized
 		let env = LynxEnv.sharedInstance()
-
-		// init global config
-		// Assumes \`initWithProvider:\` is exposed to Swift as \`init(provider:)\`
 		let globalConfig = LynxConfig(provider: env.config.templateProvider)
 
-		// register global JS module
 		// GENERATED AUTOLINK START
         
 		// GENERATED AUTOLINK END
 
-		// prepare global config
 		env.prepareConfig(globalConfig)
 	}
 
 	private func setupLynxService() {
-		// prepare lynx service
-		// Assumes SDWebImage/SDWebImageWebPCoder exposes \`shared\` singletons to Swift
 		let webPCoder = SDImageWebPCoder.shared
 		SDImageCodersManager.shared.addCoder(webPCoder)
 	}
 }
 	`);
+	}
 	writeFile(path.join(projectDir, bridgingHeader), `
 #import <Lynx/LynxConfig.h>
 #import <Lynx/LynxEnv.h>

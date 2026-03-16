@@ -61,7 +61,7 @@ async function bundleAndDeploy(opts: { target?: string; release?: boolean } = {}
     }
 
     try {
-        console.log('📦 Building Lynx project...');
+        console.log('📦 Building Lynx bundle...');
         execSync('npm run build', { stdio: 'inherit', cwd: lynxProjectDir });
         console.log('✅ Build completed successfully.');
     } catch (error) {

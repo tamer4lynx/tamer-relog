@@ -1,14 +1,21 @@
 import fs from "fs";
 import path from "path";
-import { resolveHostPaths } from "../common/hostConfig";
+import { resolveHostPaths, findDevClientPackage } from "../common/hostConfig";
 import {
   fetchAndPatchTemplateProvider,
-  getDevClientManager,
-  getPortraitCaptureActivity,
-  getProjectActivity,
   getStandaloneMainActivity,
 } from "../explorer/patches";
-import { getDevServerPrefs } from "../explorer/devLauncher";
+
+function readAndSubstituteTemplate(
+  templatePath: string,
+  vars: Record<string, string>
+): string {
+  const raw = fs.readFileSync(templatePath, "utf-8");
+  return Object.entries(vars).reduce(
+    (s, [k, v]) => s.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v),
+    raw
+  );
+}
 
 async function syncDevClient(opts?: { forceProduction?: boolean }) {
   let resolved: ReturnType<typeof resolveHostPaths>;
@@ -51,14 +58,26 @@ async function syncDevClient(opts?: { forceProduction?: boolean }) {
   const appDir = path.join(rootDir, "app");
   const mainDir = path.join(appDir, "src", "main");
   const manifestPath = path.join(mainDir, "AndroidManifest.xml");
-  const devClientManagerSource = getDevClientManager(vars);
-  if (devClientManagerSource) {
-    fs.writeFileSync(path.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
-    fs.writeFileSync(path.join(kotlinDir, "DevServerPrefs.kt"), getDevServerPrefs(vars));
-    fs.writeFileSync(path.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
-    fs.writeFileSync(path.join(kotlinDir, "PortraitCaptureActivity.kt"), getPortraitCaptureActivity(vars));
+  const devClientPkg = findDevClientPackage(resolved.projectRoot);
+  const hasDevClient = devMode === "embedded" && devClientPkg;
+  if (hasDevClient) {
+    const templateDir = path.join(devClientPkg, "android", "templates");
+    const templateVars = { PACKAGE_NAME: packageName, APP_NAME: appName };
+    const devClientFiles = [
+      "DevClientManager.kt",
+      "DevServerPrefs.kt",
+      "ProjectActivity.kt",
+      "PortraitCaptureActivity.kt",
+    ];
+    for (const f of devClientFiles) {
+      const src = path.join(templateDir, f);
+      if (fs.existsSync(src)) {
+        const content = readAndSubstituteTemplate(src, templateVars);
+        fs.writeFileSync(path.join(kotlinDir, f), content);
+      }
+    }
     let manifest = fs.readFileSync(manifestPath, "utf-8");
-    const projectActivityEntry = '        <activity android:name=".ProjectActivity" android:exported="false" android:taskAffinity="" android:launchMode="singleTask" android:documentLaunchMode="always" />';
+    const projectActivityEntry = '        <activity android:name=".ProjectActivity" android:exported="false" android:taskAffinity="" android:launchMode="singleTask" android:documentLaunchMode="always" android:windowSoftInputMode="adjustResize" />';
     const portraitCaptureEntry = '        <activity android:name=".PortraitCaptureActivity" android:screenOrientation="portrait" android:stateNotNeeded="true" android:theme="@style/zxing_CaptureTheme" android:windowSoftInputMode="stateAlwaysHidden" />';
     if (!manifest.includes("ProjectActivity")) {
       manifest = manifest.replace(/(\s*)(<\/application>)/, `${projectActivityEntry}\n$1$2`);
@@ -69,6 +88,13 @@ async function syncDevClient(opts?: { forceProduction?: boolean }) {
       manifest = manifest.replace(/(\s*)(<\/application>)/, `${portraitCaptureEntry}\n$1$2`);
     } else {
       manifest = manifest.replace(/\s*<activity android:name="\.PortraitCaptureActivity"[^\/]*\/>\n?/g, portraitCaptureEntry + "\n");
+    }
+    const mainActivityTag = manifest.match(/<activity[^>]*android:name="\.MainActivity"[^>]*>/);
+    if (mainActivityTag && !mainActivityTag[0].includes("windowSoftInputMode")) {
+      manifest = manifest.replace(
+        /(<activity\s+android:name="\.MainActivity"[^>]*)(>)/,
+        "$1 android:windowSoftInputMode=\"adjustResize\"$2"
+      );
     }
     fs.writeFileSync(manifestPath, manifest);
     console.log("✅ Synced dev client (TemplateProvider, MainActivity, ProjectActivity, DevClientManager)");

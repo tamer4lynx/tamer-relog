@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { setupGradleWrapper } from "./getGradle";
-import { loadHostConfig, resolveDevMode, resolveHostPaths, resolveIconPaths } from "../common/hostConfig";
+import { loadHostConfig, resolveAbiFilters, resolveDevMode, resolveHostPaths, resolveIconPaths, findTamerHostPackage, findDevClientPackage } from "../common/hostConfig";
 import {
   fetchAndPatchApplication,
   fetchAndPatchTemplateProvider,
@@ -11,6 +11,14 @@ import {
   getStandaloneMainActivity,
 } from "../explorer/patches";
 import { getDevServerPrefs } from "../explorer/devLauncher";
+
+function readAndSubstituteTemplate(templatePath: string, vars: Record<string, string>): string {
+  const raw = fs.readFileSync(templatePath, "utf-8");
+  return Object.entries(vars).reduce(
+    (s, [k, v]) => s.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v),
+    raw
+  );
+}
 
 function findRepoRoot(start: string): string {
   let dir = path.resolve(start);
@@ -252,7 +260,7 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+            abiFilters += listOf(${resolveAbiFilters(config).map((a) => `"${a}"`).join(', ')})
         }
     }
 
@@ -408,20 +416,52 @@ object GeneratedLynxExtensions {
       : undefined;
     const resolved = resolveHostPaths(process.cwd());
     const vars = { packageName, appName, devMode, devServer, projectRoot: resolved.lynxProjectDir };
-    const [applicationSource, templateProviderSource] = await Promise.all([
-      fetchAndPatchApplication(vars),
-      fetchAndPatchTemplateProvider(vars),
-    ]);
-    writeFile(path.join(javaDir, "App.java"), applicationSource);
-    writeFile(path.join(javaDir, "TemplateProvider.java"), templateProviderSource);
-    writeFile(path.join(kotlinDir, "MainActivity.kt"), getStandaloneMainActivity(vars));
-    if (hasDevLauncher) {
-      writeFile(path.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
-    }
-    const devClientManagerSource = getDevClientManager(vars);
-    if (devClientManagerSource) {
-      writeFile(path.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
-      writeFile(path.join(kotlinDir, "DevServerPrefs.kt"), getDevServerPrefs(vars));
+    const templateVars = { PACKAGE_NAME: packageName, APP_NAME: appName };
+    const hostPkg = findTamerHostPackage(process.cwd());
+    const devClientPkg = findDevClientPackage(process.cwd());
+
+    if (!hasDevLauncher && hostPkg) {
+      const templateDir = path.join(hostPkg, "android", "templates");
+      for (const [src, dst] of [
+        ["App.java", path.join(javaDir, "App.java")],
+        ["TemplateProvider.java", path.join(javaDir, "TemplateProvider.java")],
+        ["MainActivity.kt", path.join(kotlinDir, "MainActivity.kt")],
+      ] as [string, string][]) {
+        const srcPath = path.join(templateDir, src);
+        if (fs.existsSync(srcPath)) {
+          writeFile(dst, readAndSubstituteTemplate(srcPath, templateVars));
+        }
+      }
+    } else {
+      const [applicationSource, templateProviderSource] = await Promise.all([
+        fetchAndPatchApplication(vars),
+        fetchAndPatchTemplateProvider(vars),
+      ]);
+      writeFile(path.join(javaDir, "App.java"), applicationSource);
+      writeFile(path.join(javaDir, "TemplateProvider.java"), templateProviderSource);
+      writeFile(path.join(kotlinDir, "MainActivity.kt"), getStandaloneMainActivity(vars));
+      if (hasDevLauncher) {
+        if (devClientPkg) {
+          const templateDir = path.join(devClientPkg, "android", "templates");
+          for (const [src, dst] of [
+            ["ProjectActivity.kt", path.join(kotlinDir, "ProjectActivity.kt")],
+            ["DevClientManager.kt", path.join(kotlinDir, "DevClientManager.kt")],
+            ["DevServerPrefs.kt", path.join(kotlinDir, "DevServerPrefs.kt")],
+          ] as [string, string][]) {
+            const srcPath = path.join(templateDir, src);
+            if (fs.existsSync(srcPath)) {
+              writeFile(dst, readAndSubstituteTemplate(srcPath, templateVars));
+            }
+          }
+        } else {
+          writeFile(path.join(kotlinDir, "ProjectActivity.kt"), getProjectActivity(vars));
+          const devClientManagerSource = getDevClientManager(vars);
+          if (devClientManagerSource) {
+            writeFile(path.join(kotlinDir, "DevClientManager.kt"), devClientManagerSource);
+            writeFile(path.join(kotlinDir, "DevServerPrefs.kt"), getDevServerPrefs(vars));
+          }
+        }
+      }
     }
 
     if (iconPaths) {

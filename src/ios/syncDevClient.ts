@@ -2,9 +2,20 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { randomBytes } from 'crypto';
-import { resolveDevAppPaths } from '../common/hostConfig';
+import { resolveDevAppPaths, findDevClientPackage, findRepoRoot } from '../common/hostConfig';
 import { setupCocoaPods } from './getPod';
 import ios_autolink from './autolink';
+
+function readAndSubstituteTemplate(
+    templatePath: string,
+    vars: Record<string, string>
+): string {
+    const raw = fs.readFileSync(templatePath, 'utf-8');
+    return Object.entries(vars).reduce(
+        (s, [k, v]) => s.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v),
+        raw
+    );
+}
 
 const APP_NAME = 'TamerDevApp';
 const BUNDLE_ID = 'com.nanofuxion.tamerdevapp';
@@ -1040,11 +1051,10 @@ function generatePbxproj(ids: Record<string, string>): string {
 `;
 }
 
-async function createDevAppProject(iosDir: string): Promise<void> {
+async function createDevAppProject(iosDir: string, repoRoot: string): Promise<void> {
     const projectDir = path.join(iosDir, APP_NAME);
     const xcodeprojDir = path.join(iosDir, `${APP_NAME}.xcodeproj`);
 
-    // Clean and recreate
     if (fs.existsSync(iosDir)) {
         fs.rmSync(iosDir, { recursive: true, force: true });
     }
@@ -1067,15 +1077,39 @@ async function createDevAppProject(iosDir: string): Promise<void> {
     ];
     for (const k of idKeys) ids[k] = generateId();
 
-    // Write all files
     writeFile(path.join(iosDir, 'Podfile'), getPodfile());
     writeFile(path.join(projectDir, 'AppDelegate.swift'), getAppDelegateSwift());
-    writeFile(path.join(projectDir, 'DevLauncherViewController.swift'), getDevLauncherViewControllerSwift());
-    writeFile(path.join(projectDir, 'ProjectViewController.swift'), getProjectViewControllerSwift());
-    writeFile(path.join(projectDir, 'DevTemplateProvider.swift'), getDevTemplateProviderSwift());
-    writeFile(path.join(projectDir, 'DevClientManager.swift'), getDevClientManagerSwift());
-    writeFile(path.join(projectDir, 'QRScannerViewController.swift'), getQRScannerViewControllerSwift());
-    writeFile(path.join(projectDir, 'LynxInitProcessor.swift'), getLynxInitProcessorSwift());
+
+    const devClientPkg = findDevClientPackage(repoRoot);
+    const templateDir = devClientPkg ? path.join(devClientPkg, 'ios', 'templates') : null;
+    const templateVars = { PROJECT_BUNDLE_SEGMENT: 'tamer-dev-app' };
+    const templateFiles = [
+        'DevLauncherViewController.swift',
+        'ProjectViewController.swift',
+        'DevTemplateProvider.swift',
+        'DevClientManager.swift',
+        'QRScannerViewController.swift',
+        'LynxInitProcessor.swift',
+    ];
+    for (const f of templateFiles) {
+        const src = templateDir ? path.join(templateDir, f) : null;
+        if (src && fs.existsSync(src)) {
+            writeFile(path.join(projectDir, f), readAndSubstituteTemplate(src, templateVars));
+        } else {
+            const fallback = (() => {
+                switch (f) {
+                    case 'DevLauncherViewController.swift': return getDevLauncherViewControllerSwift();
+                    case 'ProjectViewController.swift': return getProjectViewControllerSwift();
+                    case 'DevTemplateProvider.swift': return getDevTemplateProviderSwift();
+                    case 'DevClientManager.swift': return getDevClientManagerSwift();
+                    case 'QRScannerViewController.swift': return getQRScannerViewControllerSwift();
+                    case 'LynxInitProcessor.swift': return getLynxInitProcessorSwift();
+                    default: return '';
+                }
+            })();
+            if (fallback) writeFile(path.join(projectDir, f), fallback);
+        }
+    }
     writeFile(path.join(projectDir, BRIDGING_HEADER), getBridgingHeader());
     writeFile(path.join(projectDir, 'Info.plist'), getInfoPlist());
     writeFile(path.join(projectDir, 'Base.lproj', 'Main.storyboard'), getMainStoryboard());
@@ -1101,8 +1135,9 @@ async function createDevAppProject(iosDir: string): Promise<void> {
 
 async function syncDevClientIos(): Promise<void> {
     let resolved: ReturnType<typeof resolveDevAppPaths>;
+    let repoRoot: string;
     try {
-        const repoRoot = findRepoRoot(process.cwd());
+        repoRoot = findRepoRoot(process.cwd());
         resolved = resolveDevAppPaths(repoRoot);
     } catch (e: any) {
         console.error(`❌ ${e.message}`);
@@ -1111,9 +1146,14 @@ async function syncDevClientIos(): Promise<void> {
 
     const iosDir = resolved.iosDir;
     const workspacePath = path.join(iosDir, `${APP_NAME}.xcworkspace`);
+    const projectDir = path.join(iosDir, APP_NAME);
+    const hasCommittedSource = fs.existsSync(path.join(projectDir, 'AppDelegate.swift'));
 
-    if (!fs.existsSync(workspacePath)) {
-        await createDevAppProject(iosDir);
+    if (!hasCommittedSource) {
+        await createDevAppProject(iosDir, repoRoot);
+    } else if (!fs.existsSync(workspacePath)) {
+        await setupCocoaPods(iosDir);
+        console.log(`ℹ️  iOS dev-app project exists; ran pod install`);
     } else {
         console.log(`ℹ️  iOS dev-app project already exists at ${iosDir}`);
     }
@@ -1141,22 +1181,6 @@ async function syncDevClientIos(): Promise<void> {
     } else {
         console.warn(`⚠️  Bundle not found at ${bundleSrc}`);
     }
-}
-
-function findRepoRoot(start: string): string {
-    let dir = path.resolve(start);
-    const root = path.parse(dir).root;
-    while (dir !== root) {
-        const pkgPath = path.join(dir, 'package.json');
-        if (fs.existsSync(pkgPath)) {
-            try {
-                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-                if (pkg.workspaces) return dir;
-            } catch { }
-        }
-        dir = path.dirname(dir);
-    }
-    return start;
 }
 
 export default syncDevClientIos;

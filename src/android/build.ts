@@ -35,6 +35,21 @@ async function buildApk(opts: { install?: boolean; target?: string; release?: bo
     console.log(`\n🔨 Building ${variant.toLowerCase()} APK${opts.install ? ' and installing' : ''}...`);
     execSync(`"${gradlew}" ${task}`, { stdio: 'inherit', cwd: androidDir });
     console.log(`✅ APK ${opts.install ? 'installed' : 'built'} successfully.`);
+
+    if (opts.install) {
+        const packageName = resolved.config.android?.packageName;
+        if (packageName) {
+            try {
+                console.log(`🚀 Launching ${packageName}...`);
+                execSync(`adb shell am start -n ${packageName}/.MainActivity`, { stdio: 'inherit' });
+                console.log('✅ App launched.');
+            } catch (e) {
+                console.warn('⚠️ Could not launch app. Is a device/emulator connected?');
+            }
+        } else {
+            console.log('ℹ️ Set "android.packageName" in tamer.config.json to auto-launch.');
+        }
+    }
 }
 
 export default buildApk;
