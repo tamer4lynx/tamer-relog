@@ -114,6 +114,7 @@ const create = async (opts: { target?: string } = {}) => {
         `
 [versions]
 agp = "8.9.1"
+biometric = "1.1.0"
 commonsCompress = "1.26.1"
 commonsLang3 = "3.14.0"
 fresco = "2.3.0"
@@ -132,6 +133,7 @@ primjs = "2.12.0"
 zxing = "4.3.0"
 
 [libraries]
+androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 animated-base = { module = "com.facebook.fresco:animated-base", version.ref = "fresco" }
 animated-gif = { module = "com.facebook.fresco:animated-gif", version.ref = "fresco" }
@@ -160,7 +162,9 @@ zxing = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxin
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-kapt = { id = "org.jetbrains.kotlin.kapt", version.ref = "kotlin" }
 `
     );
@@ -208,7 +212,9 @@ println("If you have native modules please run tamer android link")
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.library) apply false
     alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.compose) apply false
 }
 `
     );
@@ -257,6 +263,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -333,16 +340,16 @@ dependencies {
     const hasDevLauncher = devMode === "embedded";
     const manifestActivities = hasDevLauncher
       ? `
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".ProjectActivity" android:exported="false" android:taskAffinity="" android:launchMode="singleTask" android:documentLaunchMode="always" />
+        <activity android:name=".ProjectActivity" android:exported="false" android:taskAffinity="" android:launchMode="singleTask" android:documentLaunchMode="always" android:windowSoftInputMode="adjustResize" />
 `
       : `
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

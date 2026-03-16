@@ -26,6 +26,20 @@ t4l start
 t4l android build --install
 ```
 
+### Cloning with Submodules
+
+This repo includes native modules as git submodules. Clone with:
+
+```bash
+git clone --recurse-submodules https://github.com/nanofuxion/tamer4lynx.git
+```
+
+If you already have a clone:
+
+```bash
+git submodule update --init --recursive
+```
+
 Tamer4Lynx uses configuration files to manage your project.
 
 ### 1. Host Application (`tamer.config.json`)
@@ -251,14 +265,31 @@ Extensions are discovered via **lynx.ext.json** (RFC standard) or **tamer.json**
 
 ## Native Module References
 
-Working native modules for both **Android** and **iOS**:
+These modules are included as git submodules. Run `t4l link` after adding to your app.
 
-- [Jiggle: Vibration module (Android & iOS)](https://github.com/nanofuxion/jiggle)
-- [Lynx-Websockets: Websocket module (Android & iOS)](https://github.com/nanofuxion/lynxwebsockets)
-- [tamer-dev-app: Dev app for HMR and project debugging](https://github.com/nanofuxion/tamer-dev-app)
-- [tamer-dev-client: Dev launcher UI and bundle](https://github.com/nanofuxion/tamer-dev-client)
+| Package | Description |
+|---------|-------------|
+| [jiggle](https://github.com/nanofuxion/jiggle) | Vibration/haptic |
+| [lynxwebsockets](https://github.com/nanofuxion/lynxwebsockets) | WebSocket native bridge |
+| [tamer-dev-app](https://github.com/nanofuxion/tamer-dev-app) | Dev app (QR scan, HMR) |
+| [tamer-dev-client](https://github.com/nanofuxion/tamer-dev-client) | Dev launcher UI, discovery |
+| [tamer-plugin](https://github.com/nanofuxion/tamer-plugin) | Rsbuild plugin middleman |
+| [tamer-router](https://github.com/nanofuxion/tamer-router) | File-based routing, Stack/Tabs |
+| [tamer-icons](https://github.com/nanofuxion/tamer-icons) | Icon fonts (Material, Font Awesome) |
+| [tamer-insets](https://github.com/nanofuxion/tamer-insets) | System insets, keyboard state |
+| [tamer-system-ui](https://github.com/nanofuxion/tamer-system-ui) | Status bar, navigation bar |
+| [tamer-app-shell](https://github.com/nanofuxion/tamer-app-shell) | AppBar, TabBar, Content layout |
+| [tamer-text-input](https://github.com/nanofuxion/tamer-text-input) | React TextInput |
+| [tamer-auth](https://github.com/nanofuxion/tamer-auth) | OAuth 2.0 / OIDC |
+| [tamer-biometric](https://github.com/nanofuxion/tamer-biometric) | Fingerprint, Face ID |
+| [tamer-display-browser](https://github.com/nanofuxion/tamer-display-browser) | Open URLs in system browser |
+| [tamer-linking](https://github.com/nanofuxion/tamer-linking) | Deep linking |
+| [tamer-relog](https://github.com/nanofuxion/tamer-relog) | Console log capture |
+| [tamer-screen](https://github.com/nanofuxion/tamer-screen) | SafeArea, Screen, AvoidKeyboard |
+| [tamer-secure-store](https://github.com/nanofuxion/tamer-secure-store) | Secure key-value storage |
+| [tamer-transports](https://github.com/nanofuxion/tamer-transports) | Fetch, WebSocket, EventSource polyfills |
 
-**Note:** These modules are included as git submodules. The iOS autolinking feature is now fully functional and will automatically run `pod install` for you.
+The iOS autolinking feature runs `pod install` automatically.
 
 ---
 

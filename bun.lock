@@ -34,12 +34,17 @@
         "jiggle": "*",
         "react-router": "^6.28.0",
         "tamer-app-shell": "file:../tamer-app-shell",
+        "tamer-auth": "*",
+        "tamer-biometric": "*",
         "tamer-dev-client": "*",
+        "tamer-display-browser": "*",
         "tamer-icons": "file:../tamer-icons",
         "tamer-insets": "file:../tamer-insets",
+        "tamer-linking": "*",
         "tamer-plugin": "*",
         "tamer-router": "*",
         "tamer-screen": "file:../tamer-screen",
+        "tamer-secure-store": "*",
         "tamer-system-ui": "*",
         "tamer-text-input": "file:../tamer-text-input",
         "tamer-transports": "*",
@@ -55,6 +60,7 @@
         "@testing-library/jest-dom": "^6.6.3",
         "@types/react": "^18.3.23",
         "@types/ws": "^8.18.1",
+        "dotenv": "^16.4.5",
         "jsdom": "^26.1.0",
         "typescript": "~5.8.3",
         "vitest": "^3.2.4",
@@ -79,7 +85,6 @@
       "dependencies": {
         "tamer-icons": "file:../tamer-icons",
         "tamer-insets": "file:../tamer-insets",
-        "tamer-router": "file:../tamer-router",
         "tamer-screen": "file:../tamer-screen",
       },
       "devDependencies": {
@@ -94,6 +99,20 @@
         "@lynx-js/react": ">=0.100.0",
         "react": "^17.0.0",
         "react-router": "^6.0.0",
+      },
+    },
+    "packages/tamer-auth": {
+      "name": "tamer-auth",
+      "version": "0.1.0",
+      "dependencies": {
+        "tamer-display-browser": "*",
+        "tamer-linking": "*",
+      },
+      "devDependencies": {
+        "typescript": "~5.8.0",
+      },
+      "peerDependencies": {
+        "tamer-transports": "*",
       },
     },
     "packages/tamer-biometric": {
@@ -111,8 +130,10 @@
         "tamer-app-shell": "*",
         "tamer-biometric": "*",
         "tamer-dev-client": "*",
+        "tamer-display-browser": "*",
         "tamer-icons": "*",
         "tamer-insets": "*",
+        "tamer-linking": "*",
         "tamer-router": "*",
         "tamer-screen": "*",
         "tamer-secure-store": "*",
@@ -148,6 +169,16 @@
         "typescript": "~5.8.3",
       },
     },
+    "packages/tamer-display-browser": {
+      "name": "tamer-display-browser",
+      "version": "0.1.0",
+      "dependencies": {
+        "tamer-linking": "*",
+      },
+      "devDependencies": {
+        "typescript": "~5.8.0",
+      },
+    },
     "packages/tamer-icons": {
       "name": "tamer-icons",
       "version": "0.1.0",
@@ -175,6 +206,13 @@
         "react": "^17.0.0",
       },
     },
+    "packages/tamer-linking": {
+      "name": "tamer-linking",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "~5.8.0",
+      },
+    },
     "packages/tamer-plugin": {
       "name": "tamer-plugin",
       "version": "0.1.0",
@@ -186,12 +224,17 @@
         "@rsbuild/core": "^1.0.0",
       },
     },
+    "packages/tamer-relog": {
+      "name": "tamer-relog",
+      "version": "0.1.0",
+    },
     "packages/tamer-router": {
       "name": "tamer-router",
       "version": "0.1.0",
       "dependencies": {
         "@rsbuild/core": "^1.3.0",
         "chokidar": "^4.0.0",
+        "tamer-app-shell": "file:../tamer-app-shell",
       },
       "devDependencies": {
         "@types/react": "^17.0.0",
@@ -882,6 +925,8 @@
 
     "domutils": ["domutils@3.2.2", "", { "dependencies": { "dom-serializer": "^2.0.0", "domelementtype": "^2.3.0", "domhandler": "^5.0.3" } }, "sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw=="],
 
+    "dotenv": ["dotenv@16.6.1", "", {}, "sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow=="],
+
     "dunder-proto": ["dunder-proto@1.0.1", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.1", "es-errors": "^1.3.0", "gopd": "^1.2.0" } }, "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="],
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
@@ -1374,17 +1419,25 @@
 
     "tamer-app-shell": ["tamer-app-shell@workspace:packages/tamer-app-shell"],
 
+    "tamer-auth": ["tamer-auth@workspace:packages/tamer-auth"],
+
     "tamer-biometric": ["tamer-biometric@workspace:packages/tamer-biometric"],
 
     "tamer-dev-app": ["tamer-dev-app@workspace:packages/tamer-dev-app"],
 
     "tamer-dev-client": ["tamer-dev-client@workspace:packages/tamer-dev-client"],
 
+    "tamer-display-browser": ["tamer-display-browser@workspace:packages/tamer-display-browser"],
+
     "tamer-icons": ["tamer-icons@workspace:packages/tamer-icons"],
 
     "tamer-insets": ["tamer-insets@workspace:packages/tamer-insets"],
 
+    "tamer-linking": ["tamer-linking@workspace:packages/tamer-linking"],
+
     "tamer-plugin": ["tamer-plugin@workspace:packages/tamer-plugin"],
+
+    "tamer-relog": ["tamer-relog@workspace:packages/tamer-relog"],
 
     "tamer-router": ["tamer-router@workspace:packages/tamer-router"],
 
@@ -1600,6 +1653,8 @@
 
     "tamer-app-shell/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
+    "tamer-auth/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
+
     "tamer-biometric/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
     "tamer-dev-app/tamer-insets": ["tamer-insets@file:packages/tamer-insets", { "devDependencies": { "@types/react": "^17.0.0", "react": "^17.0.2", "typescript": "~5.8.0" }, "peerDependencies": { "react": "^17.0.0" } }],
@@ -1614,6 +1669,8 @@
 
     "tamer-dev-client/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
+    "tamer-display-browser/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
+
     "tamer-icons/@types/react": ["@types/react@17.0.91", "", { "dependencies": { "@types/prop-types": "*", "@types/scheduler": "^0.16", "csstype": "^3.2.2" } }, "sha512-xauZca6qMeCU3Moy0KxCM9jtf1vyk6qRYK39Ryf3afUqwgNUjRIGoDdS9BcGWgAMGSg1hvP4XcmlYrM66PtqeA=="],
 
     "tamer-icons/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
@@ -1621,6 +1678,8 @@
     "tamer-insets/@types/react": ["@types/react@17.0.91", "", { "dependencies": { "@types/prop-types": "*", "@types/scheduler": "^0.16", "csstype": "^3.2.2" } }, "sha512-xauZca6qMeCU3Moy0KxCM9jtf1vyk6qRYK39Ryf3afUqwgNUjRIGoDdS9BcGWgAMGSg1hvP4XcmlYrM66PtqeA=="],
 
     "tamer-insets/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
+
+    "tamer-linking/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
     "tamer-plugin/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 

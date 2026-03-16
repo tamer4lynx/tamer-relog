@@ -5,6 +5,7 @@
 
 .Background {
   position: fixed;
+  z-index: -1;
   background: radial-gradient(
     71.43% 62.3% at 46.43% 36.43%,
     rgb(0, 255, 255) 15%,
@@ -58,6 +59,12 @@ text {
   animation: Logo--shake infinite 0.5s ease;
 }
 
+.Logo--tamer {
+  width: 100px;
+  height: 100px;
+  animation: Logo--shake infinite 0.5s ease;
+}
+
 @keyframes Logo--spin {
   from {
     transform: rotate(0deg);
@@ -83,10 +90,10 @@ text {
   display: flex;
   flex-wrap: wrap;
   min-height: 32px;
+  padding: 16px;
   width: 100%;
+  gap: 16px;
   flex-direction: row;
-  align-items: center;
-  justify-content: center;
 }
 
 .Arrow {
@@ -119,7 +126,6 @@ text {
 }
 
 .Button {
-  margin-top: 20px;
   background-color: #007aff;
   padding: 12px 24px;
   border-radius: 8px;

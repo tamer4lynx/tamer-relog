@@ -53,24 +53,20 @@ const create = () => {
 		appFile: generateId(),
 		appDelegateRef: generateId(),
 		sceneDelegateRef: generateId(),
+		sceneDelegateBaseRef: generateId(),
 		viewControllerRef: generateId(),
-		mainStoryboardRef: generateId(),
 		assetsRef: generateId(),
-		launchStoryboardRef: generateId(),
 		lynxProviderRef: generateId(),
 		lynxInitRef: generateId(),
 		bridgingHeaderRef: generateId(),
-		mainStoryboardBaseRef: generateId(),
-		launchStoryboardBaseRef: generateId(),
 		nativeTarget: generateId(),
 		appDelegateBuildFile: generateId(),
 		sceneDelegateBuildFile: generateId(),
+		sceneDelegateSourceBuildFile: generateId(),
 		viewControllerBuildFile: generateId(),
 		lynxProviderBuildFile: generateId(),
 		lynxInitBuildFile: generateId(),
-		mainStoryboardBuildFile: generateId(),
 		assetsBuildFile: generateId(),
-		launchStoryboardBuildFile: generateId(),
 		frameworksBuildPhase: generateId(),
 		resourcesBuildPhase: generateId(),
 		sourcesBuildPhase: generateId(),
@@ -145,20 +141,38 @@ end
 
 	// --- App Files (same as before) ---
 	writeFile(path.join(projectDir, "AppDelegate.swift"), `
-	import UIKit
+import UIKit
 
-	@UIApplicationMain
-	class AppDelegate: UIResponder, UIApplicationDelegate {
-	  var window: UIWindow?
+@UIApplicationMain
+class AppDelegate: UIResponder, UIApplicationDelegate {
+  func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+      LynxInitProcessor.shared.setupEnvironment()
+      return true
+  }
 
-	  func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-	      LynxInitProcessor.shared.setupEnvironment()
-	    return true
-	  }
-	}
+  func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+      return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+  }
+}
+	`);
+	writeFile(path.join(projectDir, "SceneDelegate.swift"), `
+import UIKit
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+      guard let windowScene = scene as? UIWindowScene else { return }
+      window = UIWindow(windowScene: windowScene)
+      window?.rootViewController = ViewController()
+      window?.makeKeyAndVisible()
+  }
+}
 	`);
 	writeFile(path.join(projectDir, "ViewController.swift"), `
 import UIKit
+import Lynx
+import tamerinsets
 
 class ViewController: UIViewController {
   private var lynxView: LynxView?
@@ -166,47 +180,62 @@ class ViewController: UIViewController {
   override func viewDidLoad() {
 	super.viewDidLoad()
 	view.backgroundColor = .black
-	setupLynxView()
+	edgesForExtendedLayout = .all
+	extendedLayoutIncludesOpaqueBars = true
+	additionalSafeAreaInsets = .zero
+	view.insetsLayoutMarginsFromSafeArea = false
+	view.preservesSuperviewLayoutMargins = false
+	viewRespectsSystemMinimumLayoutMargins = false
   }
 
   override func viewDidLayoutSubviews() {
 	super.viewDidLayoutSubviews()
-	if let lynxView = lynxView {
-	  applyFullscreenLayout(to: lynxView)
+	guard view.bounds.width > 0, view.bounds.height > 0 else { return }
+	if lynxView == nil {
+	  setupLynxView()
+	} else {
+	  applyFullscreenLayout(to: lynxView!)
 	}
+  }
+
+  override func viewSafeAreaInsetsDidChange() {
+	super.viewSafeAreaInsetsDidChange()
+	TamerInsetsModule.reRequestInsets()
+  }
+
+  override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+
+  private func buildLynxView() -> LynxView {
+	let bounds = view.bounds
+	let lv = LynxView { builder in
+	  builder.config = LynxConfig(provider: LynxProvider())
+	  builder.screenSize = bounds.size
+	  builder.fontScale = 1.0
+	}
+	lv.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+	lv.insetsLayoutMarginsFromSafeArea = false
+	lv.preservesSuperviewLayoutMargins = false
+	applyFullscreenLayout(to: lv)
+	return lv
   }
 
   private func setupLynxView() {
-	let size = fullscreenBounds().size
-	let lynxView = LynxView { builder in
-	  builder.config = LynxConfig(provider: LynxProvider())
-	  builder.screenSize = size
-	  builder.fontScale = 1.0
-	}
-	lynxView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-	self.view.addSubview(lynxView)
-	applyFullscreenLayout(to: lynxView)
-	lynxView.perform(NSSelectorFromString("triggerLayout"))
-	lynxView.loadTemplate(fromURL: "main.lynx", initData: nil)
-	self.lynxView = lynxView
+	let lv = buildLynxView()
+	view.addSubview(lv)
+	lv.loadTemplate(fromURL: "main.lynx.bundle", initData: nil)
+	self.lynxView = lv
   }
 
   private func applyFullscreenLayout(to lynxView: LynxView) {
-	let bounds = fullscreenBounds()
+	let bounds = view.bounds
 	let size = bounds.size
 	lynxView.frame = bounds
+	lynxView.updateScreenMetrics(withWidth: size.width, height: size.height)
+	lynxView.updateViewport(withPreferredLayoutWidth: size.width, preferredLayoutHeight: size.height, needLayout: true)
 	lynxView.preferredLayoutWidth = size.width
 	lynxView.preferredLayoutHeight = size.height
 	lynxView.layoutWidthMode = .exact
 	lynxView.layoutHeightMode = .exact
-  }
-
-  private func fullscreenBounds() -> CGRect {
-	let bounds = self.view.bounds
-	if bounds.width > 0 && bounds.height > 0 {
-	  return bounds
-	}
-	return UIScreen.main.bounds
   }
 }
 	`);
@@ -214,20 +243,19 @@ class ViewController: UIViewController {
 import Foundation
 
 class LynxProvider: NSObject, LynxTemplateProvider {
-  func loadTemplate(withUrl url: String!, onComplete callback: LynxTemplateLoadBlock!) {
-	if let filePath = Bundle.main.path(forResource: url, ofType: "bundle") {
-	  do {
-		let data = try Data(contentsOf: URL(fileURLWithPath: filePath))
-		callback(data, nil)
-	  } catch {
-		print("Error reading file: \\(error.localizedDescription)")
-		callback(nil, error)
-	  }
-	} else {
-	  let urlError = NSError(domain: "com.lynx", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid URL."])
-	  callback(nil, urlError)
-	}
-  }
+    func loadTemplate(withUrl url: String!, onComplete callback: LynxTemplateLoadBlock!) {
+        DispatchQueue.global(qos: .background).async {
+            guard let url = url,
+                  let bundleUrl = Bundle.main.url(forResource: url, withExtension: nil),
+                  let data = try? Data(contentsOf: bundleUrl) else {
+                let err = NSError(domain: "LynxProvider", code: 404,
+                                  userInfo: [NSLocalizedDescriptionKey: "Bundle not found: \\(url ?? "nil")"])
+                callback?(nil, err)
+                return
+            }
+            callback?(data, nil)
+        }
+    }
 }
 	`);
 	// LynxInitProcessor.swift - provides a hook for autolinked native module registrations
@@ -248,6 +276,7 @@ final class LynxInitProcessor {
 	private init() {}
 
 	func setupEnvironment() {
+		TamerIconElement.registerFonts()
 		setupLynxEnv()
 		setupLynxService()
 	}
@@ -307,8 +336,25 @@ final class LynxInitProcessor {
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>
@@ -319,6 +365,11 @@ final class LynxInitProcessor {
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
 	`);
@@ -366,8 +417,8 @@ final class LynxInitProcessor {
 	objects = {
 /* Begin PBXBuildFile section */
 		${ids.appDelegateBuildFile} /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${ids.appDelegateRef} /* AppDelegate.swift */; };
+		${ids.sceneDelegateSourceBuildFile} /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${ids.sceneDelegateBaseRef} /* SceneDelegate.swift */; };
 		${ids.viewControllerBuildFile} /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${ids.viewControllerRef} /* ViewController.swift */; };
-		${ids.mainStoryboardBuildFile} /* Base in Resources */ = {isa = PBXBuildFile; fileRef = ${ids.mainStoryboardBaseRef} /* Base */; };
 		${ids.assetsBuildFile} /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ${ids.assetsRef} /* Assets.xcassets */; };
 		${ids.lynxProviderBuildFile} /* LynxProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${ids.lynxProviderRef} /* LynxProvider.swift */; };
 		${ids.lynxInitBuildFile} /* LynxInitProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = ${ids.lynxInitRef} /* LynxInitProcessor.swift */; };
@@ -376,8 +427,8 @@ final class LynxInitProcessor {
 /* Begin PBXFileReference section */
 		${ids.appFile} /* ${appName}.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "${appName}.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		${ids.appDelegateRef} /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate.swift"; sourceTree = "<group>"; };
+		${ids.sceneDelegateBaseRef} /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SceneDelegate.swift"; sourceTree = "<group>"; };
 		${ids.viewControllerRef} /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ViewController.swift"; sourceTree = "<group>"; };
-		${ids.mainStoryboardBaseRef} /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = "Base.lproj/Main.storyboard"; sourceTree = "<group>"; };
 		${ids.assetsRef} /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Assets.xcassets"; sourceTree = "<group>"; };
 		${ids.lynxProviderRef} /* LynxProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LynxProvider.swift"; sourceTree = "<group>"; };
 		${ids.lynxInitRef} /* LynxInitProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LynxInitProcessor.swift"; sourceTree = "<group>"; };
@@ -427,8 +478,8 @@ final class LynxInitProcessor {
 			isa = PBXGroup;
 			children = (
 				${ids.appDelegateRef} /* AppDelegate.swift */,
+				${ids.sceneDelegateBaseRef} /* SceneDelegate.swift */,
 				${ids.viewControllerRef} /* ViewController.swift */,
-				${ids.mainStoryboardRef} /* Main.storyboard */,
 				${ids.assetsRef} /* Assets.xcassets */,
 				${ids.lynxProviderRef} /* LynxProvider.swift */,
 				${ids.lynxInitRef} /* LynxInitProcessor.swift */,
@@ -489,7 +540,6 @@ final class LynxInitProcessor {
 			buildActionMask = 2147483647;
 			files = (
 				${ids.assetsBuildFile} /* Assets.xcassets in Resources */,
-				${ids.mainStoryboardBuildFile} /* Base in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -502,6 +552,7 @@ final class LynxInitProcessor {
 			files = (
 				${ids.lynxProviderBuildFile} /* LynxProvider.swift in Sources */,
 				${ids.lynxInitBuildFile} /* LynxInitProcessor.swift in Sources */,
+				${ids.sceneDelegateSourceBuildFile} /* SceneDelegate.swift in Sources */,
 				${ids.viewControllerBuildFile} /* ViewController.swift in Sources */,
 				${ids.appDelegateBuildFile} /* AppDelegate.swift in Sources */,
 			);
@@ -510,14 +561,6 @@ final class LynxInitProcessor {
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
-		${ids.mainStoryboardRef} /* Main.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				${ids.mainStoryboardBaseRef} /* Base */,
-			);
-			name = "Main.storyboard";
-			sourceTree = "<group>";
-		};
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
@@ -643,32 +686,6 @@ final class LynxInitProcessor {
 }
 	`);
 
-	// Minimal Main.storyboard
-	fs.mkdirSync(path.join(projectDir, "Base.lproj"), { recursive: true });
-	writeFile(path.join(projectDir, "Base.lproj", "Main.storyboard"), `
-<?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="13122.16" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
-	<dependencies>
-		<plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="13104.12"/>
-		<capability name="Safe area layout guides" minToolsVersion="9.0"/>
-	</dependencies>
-	<scenes>
-		<scene sceneID="tne-QT-ifu">
-			<objects>
-				<viewController id="BYZ-38-t0r" customClass="ViewController" customModuleProvider="target" sceneMemberID="viewController">
-					<view key="view" contentMode="scaleToFill" id="8bC-Xf-vdC">
-						<rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
-						<autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-						<color key="backgroundColor" systemColor="systemBackgroundColor"/>
-						<viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
-					</view>
-				</viewController>
-				<placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
-			</objects>
-		</scene>
-	</scenes>
-</document>
-	`);
 
 
 	console.log(`✅ iOS Swift project created at ${rootDir}`);

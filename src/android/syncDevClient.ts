@@ -10,7 +10,7 @@ import {
 } from "../explorer/patches";
 import { getDevServerPrefs } from "../explorer/devLauncher";
 
-async function syncDevClient() {
+async function syncDevClient(opts?: { forceProduction?: boolean }) {
   let resolved: ReturnType<typeof resolveHostPaths>;
   try {
     resolved = resolveHostPaths();
@@ -31,7 +31,7 @@ async function syncDevClient() {
     process.exit(1);
   }
 
-  const devMode = resolved.devMode;
+  const devMode = opts?.forceProduction ? "standalone" : resolved.devMode;
   const devServer = config.devServer
     ? {
         host: config.devServer.host ?? "10.0.2.2",
@@ -73,12 +73,19 @@ async function syncDevClient() {
     fs.writeFileSync(manifestPath, manifest);
     console.log("✅ Synced dev client (TemplateProvider, MainActivity, ProjectActivity, DevClientManager)");
   } else {
-    for (const f of ["DevClientManager.kt", "DevServerPrefs.kt", "ProjectActivity.kt", "PortraitCaptureActivity.kt"]) {
+    for (const f of ["DevClientManager.kt", "DevServerPrefs.kt", "ProjectActivity.kt", "PortraitCaptureActivity.kt", "DevLauncherActivity.kt"]) {
       try { fs.rmSync(path.join(kotlinDir, f)); } catch { /* ignore */ }
     }
     let manifest = fs.readFileSync(manifestPath, "utf-8");
     manifest = manifest.replace(/\s*<activity android:name="\.ProjectActivity"[^\/]*\/>\n?/g, "");
     manifest = manifest.replace(/\s*<activity android:name="\.PortraitCaptureActivity"[^\/]*\/>\n?/g, "");
+    const mainActivityTag = manifest.match(/<activity[^>]*android:name="\.MainActivity"[^>]*>/);
+    if (mainActivityTag && !mainActivityTag[0].includes("windowSoftInputMode")) {
+      manifest = manifest.replace(
+        /(<activity\s+android:name="\.MainActivity"[^>]*)(>)/,
+        "$1 android:windowSoftInputMode=\"adjustResize\"$2"
+      );
+    }
     fs.writeFileSync(manifestPath, manifest);
     console.log("✅ Synced (dev client disabled - set dev.mode: \"embedded\" in tamer.config.json to enable)");
   }

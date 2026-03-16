@@ -2,7 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { resolveHostPaths } from '../common/hostConfig';
+import { copyDistAssets } from '../common/copyDistAssets';
 import ios_autolink from './autolink';
+import syncHostIos, { addResourceToXcodeProject } from './syncHost';
 
 function bundleAndDeploy(opts: { target?: string } = {}) {
     const target = opts.target ?? 'host';
@@ -27,19 +29,8 @@ function bundleAndDeploy(opts: { target?: string } = {}) {
         process.exit(1);
     }
 
+    syncHostIos();
     ios_autolink();
-
-    if (resolved.devMode === 'embedded' && resolved.devClientBundlePath) {
-        const devAppDir = path.dirname(path.dirname(resolved.devClientBundlePath));
-        try {
-            console.log('📦 Building tamer-dev-app...');
-            execSync('npm run build', { stdio: 'inherit', cwd: devAppDir });
-            console.log('✅ Dev client build completed.');
-        } catch (error) {
-            console.error('❌ Dev client build failed.');
-            process.exit(1);
-        }
-    }
 
     try {
         console.log('📦 Starting the build process...');
@@ -61,17 +52,21 @@ function bundleAndDeploy(opts: { target?: string } = {}) {
             process.exit(1);
         }
 
-        if (resolved.devMode === 'embedded' && resolved.devClientBundlePath && fs.existsSync(resolved.devClientBundlePath)) {
-            const devClientDest = path.join(destinationDir, 'dev-client.lynx.bundle');
-            fs.copyFileSync(resolved.devClientBundlePath, devClientDest);
-            console.log(`✨ Copied dev-client.lynx.bundle to iOS project`);
-        }
-
-        console.log(`🚚 Copying bundle to iOS project...`);
-        fs.copyFileSync(sourceBundlePath, destinationBundlePath);
+        const distDir = path.dirname(sourceBundlePath);
+        console.log(`🚚 Copying bundle and assets to iOS project...`);
+        copyDistAssets(distDir, destinationDir, resolved.lynxBundleFile);
         console.log(`✨ Successfully copied bundle to: ${destinationBundlePath}`);
+
+        const pbxprojPath = path.join(resolved.iosDir, `${appName}.xcodeproj`, 'project.pbxproj');
+        if (fs.existsSync(pbxprojPath)) {
+            const skip = new Set(['.rspeedy', 'stats.json']);
+            for (const entry of fs.readdirSync(distDir)) {
+                if (skip.has(entry) || fs.statSync(path.join(distDir, entry)).isDirectory()) continue;
+                addResourceToXcodeProject(pbxprojPath, appName, entry);
+            }
+        }
     } catch (error: any) {
-        console.error('❌ Failed to copy the bundle file.');
+        console.error('❌ Failed to copy bundle assets.');
         console.error(error.message);
         process.exit(1);
     }

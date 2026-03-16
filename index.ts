@@ -68,9 +68,10 @@ android
     .command('build')
     .option('-i, --install', 'Install APK to connected device after building')
     .option('-t, --target <target>', 'Build target: host (default) or dev-app', 'host')
+    .option('-r, --release', 'Build release (production) APK')
     .description('Build APK (autolink + bundle + gradle)')
     .action(async (opts) => {
-        await android_build({ install: opts.install, target: opts.target });
+        await android_build({ install: opts.install, target: opts.target, release: opts.release });
     });
 
 android
@@ -109,9 +110,11 @@ ios.command('bundle')
 
 ios.command('build')
     .option('-t, --target <target>', 'Build target: host (default) or dev-app', 'host')
-    .description('Build IPA (autolink + bundle + xcodebuild)')
+    .option('-i, --install', 'Install and launch on booted simulator after building')
+    .option('-r, --release', 'Build release (production) configuration')
+    .description('Build iOS app (autolink + bundle + xcodebuild)')
     .action((opts) => {
-        ios_build({ target: opts.target });
+        ios_build({ target: opts.target, install: opts.install, release: opts.release });
     });
 
 const linkCmd = program.command('link')

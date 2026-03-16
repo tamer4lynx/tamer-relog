@@ -5,9 +5,10 @@ import { Icon } from 'tamer-icons'
 import '../App.css'
 import lynxLogo from '../assets/lynx-logo.png?inline'
 import reactLynxLogo from '../assets/react-logo.png?inline'
+import tamerLogo from '../assets/tamer-logo.png?inline'
 
 export default function Home() {
-  const [alterLogo, setAlterLogo] = useState(false)
+  const [alterLogo, setAlterLogo] = useState(0)
   // const [messages, setMessages] = useState<Array<{ id: string; text: string }>>([])
   // const [ws, setWs] = useState<WebSocket | null>(null)
   const { push } = useTamerRouter()
@@ -27,7 +28,7 @@ export default function Home() {
   const onTap = useCallback(() => {
     'background only'
     console.log('onTap')
-    setAlterLogo((prev) => !prev)
+    setAlterLogo(prev => prev + 1)
     NativeModules.JiggleModule?.vibrate?.(50)
     console.log('tapped logo')
     // if (ws) ws.send('Hello from Lynx tap!')
@@ -35,15 +36,19 @@ export default function Home() {
 
   return (
       <view className="App">
+        <view className="Background" />
         <view className="Banner">
           <view className="Logo" bindtap={onTap}>
-            {alterLogo ? (
+            {alterLogo % 2 === 0 ? (
               <image src={reactLynxLogo} className="Logo--react" />
-            ) : (
+            ) : alterLogo % 3 === 0 ? (
               <image src={lynxLogo} className="Logo--lynx" />
+            ) : (
+              <image src={tamerLogo} className="Logo--tamer" />
             )}
           </view>
           <text className="Title">React</text>
+          <text className="Subtitle">on Tamer</text>
           <text className="Subtitle">on Lynx</text>
         </view>
         {/* <view className="Content" style={{ flexDirection: 'column' }}>
@@ -53,22 +58,22 @@ export default function Home() {
           ))}
         </view> */}
         <view className="Content">
-          <view className="Button" bindtap={() => push('/insets')}>
+          <view className="Button" style={{ flex: "100%" }} bindtap={() => push('/insets')}>
             <text className="ButtonText">Test Insets & Keyboard</text>
           </view>
-          <view className="Button" bindtap={() => push('/screen')} style={{ marginTop: 12 }}>
+          <view className="Button" style={{ flex: "45%", maxWidth: "50%" }} bindtap={() => push('/screen')}>
             <text className="ButtonText">tamer-screen</text>
           </view>
-          <view className="Button" bindtap={() => push('/secure')} style={{ marginTop: 12 }}>
+          <view className="Button" style={{ flex: "45%",  maxWidth: "50%" }} bindtap={() => push('/secure')}>
             <text className="ButtonText">Secure Number</text>
           </view>
-          <view className="Button" bindtap={() => push('/dev')} style={{ marginTop: 12 }}>
+          <view className="Button" style={{ flex: "45%", maxWidth: "50%" }} bindtap={() => push('/dev')}>
             <text className="ButtonText">Dev Tools</text>
           </view>
-          <view className="Button" style={{ display: 'flex', backgroundColor: 'red', flexDirection: 'row', gap: 16, marginTop: 16, justifyContent: 'center', alignItems: 'center' }}>
-            <Icon name="search" set="material" size={24} color="#ffffff" />
-            <Icon name="home" set="material" size={24} color="#fff" />
-            <Icon name="heart" set="fontawesome" size={24} color="#000" />
+          <view className="Button" style={{ flex: "45%", display: 'flex', backgroundColor: '#dd7777', flexDirection: 'row', gap: 16, justifyContent: 'center', alignItems: 'center' }}>
+            <Icon name="search" set="material" size={20} color="#ffffff" />
+            <Icon name="home" set="material" size={20} color="#fff" />
+            <Icon name="heart" set="fontawesome" size={20} color="#000" />
           </view>
         </view>
       </view>

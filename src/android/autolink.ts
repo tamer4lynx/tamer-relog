@@ -3,6 +3,26 @@ import path from 'path';
 import { loadExtensionConfig, hasExtensionConfig, getAndroidModuleClassNames, type NormalizedExtensionConfig } from '../common/config';
 import { resolveHostPaths, type DeepLinkConfig } from '../common/hostConfig';
 
+const REQUIRED_CATALOG_ENTRIES: Record<string, { versionRef: string; version: string; libraryKey: string; libraryLine: string }> = {
+    'androidx.biometric': {
+        versionRef: 'biometric',
+        version: '1.1.0',
+        libraryKey: 'androidx-biometric',
+        libraryLine: 'androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }',
+    },
+};
+
+const REQUIRED_PLUGIN_ENTRIES: Record<string, { pluginKey: string; pluginLine: string }> = {
+    'android.library': {
+        pluginKey: 'android-library',
+        pluginLine: 'android-library = { id = "com.android.library", version.ref = "agp" }',
+    },
+    'kotlin.compose': {
+        pluginKey: 'kotlin-compose',
+        pluginLine: 'kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }',
+    },
+};
+
 const autolink = () => {
     interface DiscoveredPackage {
         name: string;
@@ -393,8 +413,74 @@ ${createDelayedBody}
 
         syncManifestPermissions(packages);
         syncDeepLinkIntentFilters();
+        syncVersionCatalog(packages);
+        ensureReleaseSigning();
 
         console.log('✨ Autolinking complete.');
+    }
+
+    function syncVersionCatalog(packages: DiscoveredPackage[]): void {
+        const libsTomlPath = path.join(appAndroidPath, 'gradle', 'libs.versions.toml');
+        if (!fs.existsSync(libsTomlPath)) return;
+
+        const requiredAliases = new Set<string>();
+        const requiredPluginAliases = new Set<string>();
+        for (const pkg of packages) {
+            const buildPath = path.join(pkg.packagePath, pkg.config.android?.sourceDir || 'android', 'build.gradle.kts');
+            if (!fs.existsSync(buildPath)) continue;
+            const content = fs.readFileSync(buildPath, 'utf8');
+            for (const m of content.matchAll(/libs\.([\w.]+)/g)) {
+                const alias = m[1];
+                if (alias && alias in REQUIRED_CATALOG_ENTRIES) requiredAliases.add(alias);
+            }
+            for (const m of content.matchAll(/libs\.plugins\.([\w.]+)/g)) {
+                const alias = m[1];
+                if (alias && alias in REQUIRED_PLUGIN_ENTRIES) requiredPluginAliases.add(alias);
+            }
+        }
+        if (requiredAliases.size === 0 && requiredPluginAliases.size === 0) return;
+
+        let toml = fs.readFileSync(libsTomlPath, 'utf8');
+        let updated = false;
+        for (const alias of requiredAliases) {
+            const entry = REQUIRED_CATALOG_ENTRIES[alias];
+            if (!entry) continue;
+            if (!toml.includes(`${entry.versionRef} = "`)) {
+                toml = toml.replace(/(\[versions\]\n)/, `$1${entry.versionRef} = "${entry.version}"\n`);
+                updated = true;
+            }
+            if (!toml.includes(`${entry.libraryKey} = `)) {
+                toml = toml.replace(/(\[libraries\]\n)/, `$1${entry.libraryLine}\n`);
+                updated = true;
+            }
+        }
+        for (const alias of requiredPluginAliases) {
+            const entry = REQUIRED_PLUGIN_ENTRIES[alias];
+            if (!entry || toml.includes(`${entry.pluginKey} = `)) continue;
+            toml = toml.replace(/(\[plugins\]\n)/, `$1${entry.pluginLine}\n`);
+            updated = true;
+        }
+        if (updated) {
+            fs.writeFileSync(libsTomlPath, toml);
+            console.log('✅ Synced version catalog (libs.versions.toml) for linked modules.');
+        }
+    }
+
+    function ensureReleaseSigning(): void {
+        const appBuildPath = path.join(appAndroidPath, 'app', 'build.gradle.kts');
+        if (!fs.existsSync(appBuildPath)) return;
+        let content = fs.readFileSync(appBuildPath, 'utf8');
+        if (content.includes('signingConfig = signingConfigs.getByName("debug")')) return;
+        const releaseBlock = /(release\s*\{)([\s\S]*?)(\n        \}\s*\n(\s*\}|\s*compileOptions))/;
+        const match = content.match(releaseBlock);
+        if (match) {
+            content = content.replace(
+                releaseBlock,
+                `$1$2\n            signingConfig = signingConfigs.getByName("debug")\n        $3`
+            );
+            fs.writeFileSync(appBuildPath, content);
+            console.log('✅ Set release signing to debug so installRelease works without a keystore.');
+        }
     }
 
     function syncManifestPermissions(packages: DiscoveredPackage[]): void {

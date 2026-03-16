@@ -490,6 +490,29 @@ import com.nanofuxion.tamerdevclient.DevClientModule
 `
     : "";
 
+  const standaloneLifecycle = !hasDevClient
+    ? `
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        GeneratedActivityLifecycle.onWindowFocusChanged(hasFocus)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        GeneratedActivityLifecycle.onNewIntent(intent)
+    }
+
+    override fun onDestroy() {
+        GeneratedActivityLifecycle.onViewDetached()
+        GeneratedLynxExtensions.onHostViewChanged(null)
+        lynxView?.destroy()
+        lynxView = null
+        super.onDestroy()
+    }
+`
+    : "";
+
   return `package ${vars.packageName}
 
 import android.os.Build
@@ -509,11 +532,11 @@ import ${vars.packageName}.generated.GeneratedLynxExtensions
 import ${vars.packageName}.generated.GeneratedActivityLifecycle
 
 class MainActivity : AppCompatActivity() {
-${devClientField}    private var lynxView: LynxView? = null
+${devClientField}    private var lynxView: LynxView? = null${!hasDevClient ? '\n    private val handler = android.os.Handler(android.os.Looper.getMainLooper())' : ''}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        ${!hasDevClient ? 'GeneratedActivityLifecycle.onCreate(intent)\n        ' : ''}WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         lynxView = buildLynxView()
         setContentView(lynxView)
@@ -525,7 +548,7 @@ ${devClientField}    private var lynxView: LynxView? = null
         }
         GeneratedActivityLifecycle.onViewAttached(lynxView)
         GeneratedLynxExtensions.onHostViewChanged(lynxView)
-        lynxView?.renderTemplateUrl(${hasDevClient ? 'currentUri' : '"main.lynx.bundle"'}, "")${devClientInit}
+        lynxView?.renderTemplateUrl(${hasDevClient ? 'currentUri' : '"main.lynx.bundle"'}, "")${devClientInit}${!hasDevClient ? '\n        GeneratedActivityLifecycle.onCreateDelayed(handler)' : ''}
     }
 
     override fun onPause() {
@@ -535,9 +558,6 @@ ${devClientField}    private var lynxView: LynxView? = null
 
     override fun onResume() {
         super.onResume()
-        lynxView?.let {
-            GeneratedLynxExtensions.onHostViewChanged(it)
-        }
         GeneratedActivityLifecycle.onResume()
     }
 
@@ -574,7 +594,7 @@ ${devClientField}    private var lynxView: LynxView? = null
         val viewBuilder = LynxViewBuilder()
         viewBuilder.setTemplateProvider(TemplateProvider(this))
         return viewBuilder.build(this)
-    }${devClientCleanup}
+    }${standaloneLifecycle}${devClientCleanup}
 }
 `;
 }

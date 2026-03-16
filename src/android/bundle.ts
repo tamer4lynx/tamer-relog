@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { copyDistAssets } from '../common/copyDistAssets';
 import { resolveHostPaths, resolveDevAppPaths } from '../common/hostConfig';
 import android_autolink from './autolink';
 import android_create from './create';
@@ -24,8 +25,9 @@ function findRepoRoot(start: string): string {
     return start;
 }
 
-async function bundleAndDeploy(opts: { target?: string } = {}) {
+async function bundleAndDeploy(opts: { target?: string; release?: boolean } = {}) {
     const target = (opts.target ?? 'host') as BundleTarget;
+    const release = opts.release === true;
     const origCwd = process.cwd();
 
     let resolved: ReturnType<typeof resolveHostPaths>;
@@ -52,7 +54,9 @@ async function bundleAndDeploy(opts: { target?: string } = {}) {
     const destinationDir = androidAssetsDir;
 
     android_autolink();
-    if (devMode === 'embedded') {
+    if (release) {
+        await android_syncDevClient({ forceProduction: true });
+    } else if (devMode === 'embedded') {
         await android_syncDevClient();
     }
 
@@ -69,7 +73,7 @@ async function bundleAndDeploy(opts: { target?: string } = {}) {
         process.chdir(origCwd);
     }
 
-    if (target !== 'dev-app' && devMode === 'embedded' && devClientBundlePath && !fs.existsSync(devClientBundlePath)) {
+    if (target !== 'dev-app' && !release && devMode === 'embedded' && devClientBundlePath && !fs.existsSync(devClientBundlePath)) {
         const devClientDir = path.dirname(path.dirname(devClientBundlePath));
         try {
             console.log('📦 Building dev launcher (tamer-dev-client)...');
@@ -83,7 +87,13 @@ async function bundleAndDeploy(opts: { target?: string } = {}) {
 
     try {
         fs.mkdirSync(destinationDir, { recursive: true });
-        if (target !== 'dev-app' && devMode === 'embedded' && devClientBundlePath && fs.existsSync(devClientBundlePath)) {
+        if (target !== 'dev-app' && release) {
+            const devClientAsset = path.join(destinationDir, 'dev-client.lynx.bundle');
+            if (fs.existsSync(devClientAsset)) {
+                fs.rmSync(devClientAsset);
+                console.log(`✨ Removed dev-client.lynx.bundle from assets (production build)`);
+            }
+        } else if (target !== 'dev-app' && devMode === 'embedded' && devClientBundlePath && fs.existsSync(devClientBundlePath)) {
             fs.copyFileSync(devClientBundlePath, path.join(destinationDir, 'dev-client.lynx.bundle'));
             console.log(`✨ Copied dev-client.lynx.bundle to assets`);
         }
@@ -91,7 +101,8 @@ async function bundleAndDeploy(opts: { target?: string } = {}) {
             console.error(`❌ Build output not found at: ${lynxBundlePath}`);
             process.exit(1);
         }
-        fs.copyFileSync(lynxBundlePath, path.join(destinationDir, resolved.lynxBundleFile));
+        const distDir = path.dirname(lynxBundlePath);
+        copyDistAssets(distDir, destinationDir, resolved.lynxBundleFile);
         console.log(`✨ Copied ${resolved.lynxBundleFile} to assets`);
     } catch (error: any) {
         console.error(`❌ Failed to copy bundle: ${error.message}`);

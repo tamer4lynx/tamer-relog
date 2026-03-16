@@ -4,7 +4,20 @@ import { execSync } from 'child_process';
 import { resolveHostPaths } from '../common/hostConfig';
 import ios_bundle from './bundle';
 
-function buildIpa(opts: { target?: string } = {}) {
+function findBootedSimulator(): string | null {
+    try {
+        const out = execSync('xcrun simctl list devices --json', { encoding: 'utf8' });
+        const json = JSON.parse(out);
+        for (const runtimes of Object.values(json.devices) as any[][]) {
+            for (const device of runtimes) {
+                if (device.state === 'Booted') return device.udid as string;
+            }
+        }
+    } catch {}
+    return null;
+}
+
+function buildIpa(opts: { target?: string; install?: boolean; release?: boolean } = {}) {
     const target = opts.target ?? 'host';
     const resolved = resolveHostPaths();
     if (!resolved.config.ios?.appName) {
@@ -17,23 +30,54 @@ function buildIpa(opts: { target?: string } = {}) {
     }
 
     const appName = resolved.config.ios.appName;
+    const bundleId = resolved.config.ios.bundleId;
     const iosDir = resolved.iosDir;
+    const configuration = opts.release ? 'Release' : 'Debug';
 
     ios_bundle({ target });
 
     const scheme = appName;
     const workspacePath = path.join(iosDir, `${appName}.xcworkspace`);
     const projectPath = path.join(iosDir, `${appName}.xcodeproj`);
-
     const xcproject = fs.existsSync(workspacePath) ? workspacePath : projectPath;
     const flag = xcproject.endsWith('.xcworkspace') ? '-workspace' : '-project';
+    const derivedDataPath = path.join(iosDir, 'build');
 
-    console.log(`\n🔨 Building IPA...`);
-    execSync(`xcodebuild -${flag} "${xcproject}" -scheme "${scheme}" -configuration Debug -sdk iphoneos -derivedDataPath build`, {
-        stdio: 'inherit',
-        cwd: iosDir,
-    });
-    console.log('✅ IPA built successfully.');
+    const sdk = opts.install ? 'iphonesimulator' : 'iphoneos';
+    console.log(`\n🔨 Building ${configuration} (${sdk})...`);
+    execSync(
+        `xcodebuild ${flag} "${xcproject}" -scheme "${scheme}" -configuration ${configuration} -sdk ${sdk} -derivedDataPath "${derivedDataPath}"`,
+        { stdio: 'inherit', cwd: iosDir }
+    );
+    console.log(`✅ Build completed.`);
+
+    if (opts.install) {
+        const appGlob = path.join(
+            derivedDataPath,
+            'Build', 'Products', `${configuration}-iphonesimulator`, `${appName}.app`
+        );
+        if (!fs.existsSync(appGlob)) {
+            console.error(`❌ Built app not found at: ${appGlob}`);
+            process.exit(1);
+        }
+
+        const udid = findBootedSimulator();
+        if (!udid) {
+            console.error('❌ No booted simulator found. Start one with: xcrun simctl boot <udid>');
+            process.exit(1);
+        }
+
+        console.log(`📲 Installing on simulator ${udid}...`);
+        execSync(`xcrun simctl install "${udid}" "${appGlob}"`, { stdio: 'inherit' });
+
+        if (bundleId) {
+            console.log(`🚀 Launching ${bundleId}...`);
+            execSync(`xcrun simctl launch "${udid}" "${bundleId}"`, { stdio: 'inherit' });
+            console.log('✅ App launched.');
+        } else {
+            console.log('✅ App installed. (Set "ios.bundleId" in tamer.config.json to auto-launch.)');
+        }
+    }
 }
 
 export default buildIpa;

@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+      "lynx-docs": {
+        "command": "bunx",
+        "args": [
+          "-y",
+          "@lynx-js/docs-mcp-server@latest"
+        ]
+      }
+    }
+  }

@@ -20,18 +20,19 @@ function findRepoRoot(start: string): string {
     return start;
 }
 
-async function buildApk(opts: { install?: boolean; target?: string } = {}) {
+async function buildApk(opts: { install?: boolean; target?: string; release?: boolean } = {}) {
     const target = opts.target ?? 'host';
     const resolved = target === 'dev-app'
         ? resolveDevAppPaths(findRepoRoot(process.cwd()))
         : resolveHostPaths();
 
-    await android_bundle({ target });
+    await android_bundle({ target, release: opts.release });
 
     const androidDir = resolved.androidDir;
     const gradlew = path.join(androidDir, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew');
-    const task = opts.install ? 'installDebug' : 'assembleDebug';
-    console.log(`\n🔨 Building ${opts.install ? 'and installing' : ''} APK...`);
+    const variant = opts.release ? 'Release' : 'Debug';
+    const task = opts.install ? `install${variant}` : `assemble${variant}`;
+    console.log(`\n🔨 Building ${variant.toLowerCase()} APK${opts.install ? ' and installing' : ''}...`);
     execSync(`"${gradlew}" ${task}`, { stdio: 'inherit', cwd: androidDir });
     console.log(`✅ APK ${opts.install ? 'installed' : 'built'} successfully.`);
 }
