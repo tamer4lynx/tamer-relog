@@ -30,7 +30,7 @@ jobs:
 
       - uses: peaceiris/actions-gh-pages@v4
         with:
-          github_token: ${{ secrets.GH_PAGES_TOKEN }}
+          personal_token: ${{ secrets.GH_PAGES_TOKEN }}
           external_repository: tamer4lynx/tamer4lynx.github.io
           publish_branch: main
           publish_dir: packages/docs/doc_build
