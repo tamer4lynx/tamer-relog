@@ -28,16 +28,6 @@ t4l start
 t4l android build --install
 ```
 
-### Clone the repo
-
-```bash
-git clone https://github.com/tamer4lynx/tamer4lynx.git
-cd tamer4lynx
-npm install
-```
-
-Native modules are workspace packages and are installed with `npm install`.
-
 Tamer4Lynx uses configuration files to manage your project.
 
 ### 1. Host Application (`tamer.config.json`)
@@ -327,7 +317,15 @@ The iOS autolinking feature runs `pod install` automatically.
 - [Example LynxJS project with Jiggle and Lynx-Websockets](https://github.com/tamer4lynx/tamer4lynx/tree/main/packages/example)
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests.
+Contributions are welcome! To develop on Tamer4Lynx:
+
+```bash
+git clone https://github.com/tamer4lynx/tamer4lynx.git
+cd tamer4lynx
+npm install
+```
+
+Please feel free to submit issues or pull requests.
 
 ---
 
