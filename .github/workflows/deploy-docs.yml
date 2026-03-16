@@ -1,9 +1,11 @@
 name: Deploy docs to tamer4lynx.github.io
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - 'packages/docs'
       - 'packages/docs/**'
       - '.github/workflows/deploy-docs.yml'
 
