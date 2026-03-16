@@ -1,57 +1,60 @@
 [submodule "packages/jiggle"]
 	path = packages/jiggle
-	url = https://github.com/nanofuxion/jiggle
+	url = https://github.com/tamer4lynx/jiggle
 [submodule "packages/lynxwebsockets"]
 	path = packages/lynxwebsockets
-	url = https://github.com/nanofuxion/lynxwebsockets
+	url = https://github.com/tamer4lynx/lynxwebsockets
 [submodule "packages/tamer-dev-app"]
 	path = packages/tamer-dev-app
-	url = https://github.com/nanofuxion/tamer-dev-app.git
+	url = https://github.com/tamer4lynx/tamer-dev-app.git
 [submodule "packages/tamer-dev-client"]
 	path = packages/tamer-dev-client
-	url = https://github.com/nanofuxion/tamer-dev-client.git
+	url = https://github.com/tamer4lynx/tamer-dev-client.git
 [submodule "packages/tamer-plugin"]
 	path = packages/tamer-plugin
-	url = https://github.com/nanofuxion/tamer-plugin.git
+	url = https://github.com/tamer4lynx/tamer-plugin.git
 [submodule "packages/tamer-router"]
 	path = packages/tamer-router
-	url = https://github.com/nanofuxion/tamer-router.git
+	url = https://github.com/tamer4lynx/tamer-router.git
 [submodule "packages/tamer-icons"]
 	path = packages/tamer-icons
-	url = https://github.com/nanofuxion/tamer-icons.git
+	url = https://github.com/tamer4lynx/tamer-icons.git
 [submodule "packages/tamer-insets"]
 	path = packages/tamer-insets
-	url = https://github.com/nanofuxion/tamer-insets.git
+	url = https://github.com/tamer4lynx/tamer-insets.git
 [submodule "packages/tamer-system-ui"]
 	path = packages/tamer-system-ui
-	url = https://github.com/nanofuxion/tamer-system-ui.git
+	url = https://github.com/tamer4lynx/tamer-system-ui.git
 [submodule "packages/tamer-app-shell"]
 	path = packages/tamer-app-shell
-	url = https://github.com/nanofuxion/tamer-app-shell.git
+	url = https://github.com/tamer4lynx/tamer-app-shell.git
 [submodule "packages/tamer-text-input"]
 	path = packages/tamer-text-input
-	url = https://github.com/nanofuxion/tamer-text-input.git
+	url = https://github.com/tamer4lynx/tamer-text-input.git
 [submodule "packages/tamer-auth"]
 	path = packages/tamer-auth
-	url = https://github.com/nanofuxion/tamer-auth.git
+	url = https://github.com/tamer4lynx/tamer-auth.git
 [submodule "packages/tamer-biometric"]
 	path = packages/tamer-biometric
-	url = https://github.com/nanofuxion/tamer-biometric.git
+	url = https://github.com/tamer4lynx/tamer-biometric.git
 [submodule "packages/tamer-display-browser"]
 	path = packages/tamer-display-browser
-	url = https://github.com/nanofuxion/tamer-display-browser.git
+	url = https://github.com/tamer4lynx/tamer-display-browser.git
 [submodule "packages/tamer-linking"]
 	path = packages/tamer-linking
-	url = https://github.com/nanofuxion/tamer-linking.git
+	url = https://github.com/tamer4lynx/tamer-linking.git
 [submodule "packages/tamer-relog"]
 	path = packages/tamer-relog
-	url = https://github.com/nanofuxion/tamer-relog.git
+	url = https://github.com/tamer4lynx/tamer-relog.git
 [submodule "packages/tamer-screen"]
 	path = packages/tamer-screen
-	url = https://github.com/nanofuxion/tamer-screen.git
+	url = https://github.com/tamer4lynx/tamer-screen.git
 [submodule "packages/tamer-secure-store"]
 	path = packages/tamer-secure-store
-	url = https://github.com/nanofuxion/tamer-secure-store.git
+	url = https://github.com/tamer4lynx/tamer-secure-store.git
 [submodule "packages/tamer-transports"]
 	path = packages/tamer-transports
-	url = https://github.com/nanofuxion/tamer-transports.git
+	url = https://github.com/tamer4lynx/tamer-transports.git
+[submodule "packages/docs"]
+	path = packages/docs
+	url = https://github.com/tamer4lynx/docs.git
