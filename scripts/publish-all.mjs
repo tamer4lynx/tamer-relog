@@ -39,7 +39,7 @@ for (const pkgPath of PUBLISH_ORDER) {
   publish(pkgPath);
 }
 
-console.log('\n📦 Publishing @tamer4lynx/tamer4lynx (root)...');
+console.log('\n📦 Publishing @tamer4lynx/cli (root)...');
 execSync('npm publish', { cwd: ROOT, stdio: 'inherit' });
 
 console.log('\n✅ All packages published.');

@@ -11,17 +11,17 @@ Inspired by [Expo](https://expo.dev) and [Expo Go](https://expo.dev/go).
 All Tamer packages are published under the `@tamer4lynx` scope on npm. Install the CLI globally:
 
 ```bash
-npm i -g @tamer4lynx/tamer4lynx
+npm i -g @tamer4lynx/cli
 ```
 
 With pnpm or Bun:
 
 ```bash
-pnpm add -g @tamer4lynx/tamer4lynx
-bun add -g @tamer4lynx/tamer4lynx
+pnpm add -g @tamer4lynx/cli
+bun add -g @tamer4lynx/cli
 ```
 
-Or from GitHub (run `npm uninstall -g @tamer4lynx/tamer4lynx` first if switching):
+Or from GitHub (run `npm uninstall -g @tamer4lynx/cli` first if switching):
 
 ```bash
 npm i -g tamer4lynx/tamer4lynx
