@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { setupGradleWrapper } from "./getGradle";
-import { loadHostConfig, resolveAbiFilters, resolveDevMode, resolveHostPaths, resolveIconPaths, findTamerHostPackage, findDevClientPackage } from "../common/hostConfig";
+import { loadHostConfig, resolveAbiFilters, resolveDevMode, resolveHostPaths, resolveIconPaths, findTamerHostPackage, findDevClientPackage, findDevAppPackage, findRepoRoot } from "../common/hostConfig";
 import {
   fetchAndPatchApplication,
   fetchAndPatchTemplateProvider,
@@ -20,30 +20,13 @@ function readAndSubstituteTemplate(templatePath: string, vars: Record<string, st
   );
 }
 
-function findRepoRoot(start: string): string {
-  let dir = path.resolve(start);
-  const root = path.parse(dir).root;
-  while (dir !== root) {
-    const pkgPath = path.join(dir, "package.json");
-    if (fs.existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-        if (pkg.workspaces) return dir;
-      } catch {}
-    }
-    dir = path.dirname(dir);
-  }
-  return start;
-}
-
 const create = async (opts: { target?: string } = {}) => {
     const target = opts.target ?? "host";
     const origCwd = process.cwd();
     if (target === "dev-app") {
-      const repoRoot = findRepoRoot(origCwd);
-      const devAppDir = path.join(repoRoot, "packages", "tamer-dev-app");
-      if (!fs.existsSync(path.join(devAppDir, "tamer.config.json"))) {
-        console.error("❌ packages/tamer-dev-app/tamer.config.json not found.");
+      const devAppDir = findDevAppPackage(origCwd) ?? findDevAppPackage(findRepoRoot(origCwd));
+      if (!devAppDir || !fs.existsSync(path.join(devAppDir, "tamer.config.json"))) {
+        console.error("❌ tamer-dev-app not found. Add @tamer4lynx/tamer-dev-app to dependencies.");
         process.exit(1);
       }
       process.chdir(devAppDir);

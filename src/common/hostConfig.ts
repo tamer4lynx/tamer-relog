@@ -208,6 +208,7 @@ export function findRepoRoot(start: string): string {
 
 export function findDevAppPackage(projectRoot: string): string | null {
   const candidates = [
+    path.join(projectRoot, 'node_modules', '@tamer4lynx', 'tamer-dev-app'),
     path.join(projectRoot, 'node_modules', 'tamer-dev-app'),
     path.join(projectRoot, 'packages', 'tamer-dev-app'),
     path.join(path.dirname(projectRoot), 'tamer-dev-app'),
@@ -222,6 +223,7 @@ export function findDevAppPackage(projectRoot: string): string | null {
 
 export function findDevClientPackage(projectRoot: string): string | null {
   const candidates = [
+    path.join(projectRoot, 'node_modules', '@tamer4lynx', 'tamer-dev-client'),
     path.join(projectRoot, 'node_modules', 'tamer-dev-client'),
     path.join(projectRoot, 'packages', 'tamer-dev-client'),
     path.join(path.dirname(projectRoot), 'tamer-dev-client'),
@@ -343,17 +345,29 @@ export function resolveIconPaths(
   return Object.keys(out).length ? out : null;
 }
 
-export function resolveDevAppPaths(repoRoot: string): ResolvedPaths & { config: HostConfig } {
-  const devAppDir = path.join(repoRoot, 'packages', 'tamer-dev-app');
+export function resolveDevAppPaths(searchRoot: string): ResolvedPaths & { config: HostConfig } {
+  const devAppDir = findDevAppPackage(searchRoot) ?? findDevAppPackage(findRepoRoot(searchRoot));
+  if (!devAppDir) {
+    throw new Error('tamer-dev-app not found. Add @tamer4lynx/tamer-dev-app to dependencies, or run from the tamer4lynx monorepo.');
+  }
   const configPath = path.join(devAppDir, 'tamer.config.json');
   if (!fs.existsSync(configPath)) {
-    throw new Error('packages/tamer-dev-app/tamer.config.json not found.');
+    throw new Error(`tamer.config.json not found in ${devAppDir}`);
   }
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const packageName = config.android?.packageName ?? 'com.nanofuxion.tamerdevapp';
   const androidDirRel = config.paths?.androidDir ?? 'android';
   const androidDir = path.join(devAppDir, androidDirRel);
-  const devClientDir = findDevClientPackage(repoRoot) ?? path.join(repoRoot, 'packages', 'tamer-dev-client');
+  const inDevAppScoped = path.join(devAppDir, 'node_modules', '@tamer4lynx', 'tamer-dev-client');
+  const inDevAppFlat = path.join(devAppDir, 'node_modules', 'tamer-dev-client');
+  const devClientDir =
+    findDevClientPackage(searchRoot) ??
+    findDevClientPackage(findRepoRoot(searchRoot)) ??
+    (fs.existsSync(path.join(inDevAppScoped, 'package.json')) ? inDevAppScoped : null) ??
+    (fs.existsSync(path.join(inDevAppFlat, 'package.json')) ? inDevAppFlat : null);
+  if (!devClientDir || !fs.existsSync(devClientDir)) {
+    throw new Error('tamer-dev-client not found. Add @tamer4lynx/tamer-dev-client (or tamer-dev-app pulls it in).');
+  }
   const lynxBundlePath = path.join(devClientDir, DEFAULT_BUNDLE_ROOT, 'dev-client.lynx.bundle');
   return {
     projectRoot: devAppDir,

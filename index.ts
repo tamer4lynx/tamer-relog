@@ -65,7 +65,7 @@ android
 
 android
     .command('bundle')
-    .option('-t, --target <target>', 'Bundle target: host (default) or dev-app', 'host')
+    .option('-t, --target <target>', 'Bundle target: dev-app (default) or host', 'dev-app')
     .option('-d, --debug', 'Build debug (development) bundle')
     .option('-r, --release', 'Build release (production) bundle')
     .description('Build Lynx bundle and copy to Android assets (runs autolink first)')
@@ -78,7 +78,7 @@ android
 const androidBuildCmd = android
     .command('build')
     .option('-i, --install', 'Install APK to connected device and launch app after building')
-    .option('-t, --target <target>', 'Build target: host (default) or dev-app', 'host')
+    .option('-t, --target <target>', 'Build target: dev-app (default) or host', 'dev-app')
     .option('-e, --embeddable', 'Build for embedding in existing app (host only). Use with --release for production-ready embeddable.')
     .option('-d, --debug', 'Build debug (development) APK')
     .option('-r, --release', 'Build release (production) APK')
@@ -137,7 +137,7 @@ ios.command('link')
 
 
 ios.command('bundle')
-    .option('-t, --target <target>', 'Bundle target: host (default) or dev-app', 'host')
+    .option('-t, --target <target>', 'Bundle target: dev-app (default) or host', 'dev-app')
     .option('-d, --debug', 'Build debug (development) bundle')
     .option('-r, --release', 'Build release (production) bundle')
     .description('Build Lynx bundle and copy to iOS project (runs autolink first)')
@@ -148,7 +148,7 @@ ios.command('bundle')
     });
 
 const iosBuildCmd = ios.command('build')
-    .option('-t, --target <target>', 'Build target: host (default) or dev-app', 'host')
+    .option('-t, --target <target>', 'Build target: dev-app (default) or host', 'dev-app')
     .option('-e, --embeddable', 'Output bundle + code snippets to embeddable/ for adding LynxView to an existing app. Use with --release.')
     .option('-i, --install', 'Install and launch on booted simulator after building')
     .option('-d, --debug', 'Build debug (development) configuration')

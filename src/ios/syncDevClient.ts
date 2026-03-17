@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { randomBytes } from 'crypto';
-import { resolveDevAppPaths, findDevClientPackage, findRepoRoot } from '../common/hostConfig';
+import { resolveDevAppPaths, findDevClientPackage } from '../common/hostConfig';
 import { setupCocoaPods } from './getPod';
 import ios_autolink from './autolink';
 
@@ -1137,8 +1137,8 @@ async function syncDevClientIos(): Promise<void> {
     let resolved: ReturnType<typeof resolveDevAppPaths>;
     let repoRoot: string;
     try {
-        repoRoot = findRepoRoot(process.cwd());
-        resolved = resolveDevAppPaths(repoRoot);
+        resolved = resolveDevAppPaths(process.cwd());
+        repoRoot = resolved.projectRoot;
     } catch (e: any) {
         console.error(`❌ ${e.message}`);
         process.exit(1);

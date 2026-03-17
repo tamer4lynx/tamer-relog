@@ -22,9 +22,20 @@ function findRepoRoot(start: string): string {
 
 async function buildApk(opts: { install?: boolean; target?: string; release?: boolean } = {}) {
     const target = opts.target ?? 'host';
-    const resolved = target === 'dev-app'
-        ? resolveDevAppPaths(findRepoRoot(process.cwd()))
-        : resolveHostPaths();
+    let resolved: ReturnType<typeof resolveHostPaths>;
+    try {
+        resolved = target === 'dev-app'
+            ? resolveDevAppPaths(process.cwd())
+            : resolveHostPaths();
+    } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (target === 'dev-app') {
+            console.error(`❌ ${msg}`);
+            console.error('   Add @tamer4lynx/tamer-dev-app to dependencies, or use -t host to build your app.');
+            process.exit(1);
+        }
+        throw error;
+    }
 
     await android_bundle({ target, release: opts.release });
 

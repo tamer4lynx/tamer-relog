@@ -9,22 +9,6 @@ import android_syncDevClient from './syncDevClient';
 
 export type BundleTarget = 'host' | 'dev-app';
 
-function findRepoRoot(start: string): string {
-    let dir = path.resolve(start);
-    const root = path.parse(dir).root;
-    while (dir !== root) {
-        const pkgPath = path.join(dir, 'package.json');
-        if (fs.existsSync(pkgPath)) {
-            try {
-                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-                if (pkg.workspaces) return dir;
-            } catch {}
-        }
-        dir = path.dirname(dir);
-    }
-    return start;
-}
-
 async function bundleAndDeploy(opts: { target?: string; release?: boolean } = {}) {
     const target = (opts.target ?? 'host') as BundleTarget;
     const release = opts.release === true;
@@ -33,8 +17,7 @@ async function bundleAndDeploy(opts: { target?: string; release?: boolean } = {}
     let resolved: ReturnType<typeof resolveHostPaths>;
     try {
         if (target === 'dev-app') {
-            const repoRoot = findRepoRoot(origCwd);
-            resolved = resolveDevAppPaths(repoRoot);
+            resolved = resolveDevAppPaths(origCwd);
             const devAppDir = resolved.projectRoot;
             const androidDir = resolved.androidDir;
             if (!fs.existsSync(androidDir)) {

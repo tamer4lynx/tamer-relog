@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { resolveHostPaths, resolveDevAppPaths, findRepoRoot } from '../common/hostConfig';
+import { resolveHostPaths, resolveDevAppPaths } from '../common/hostConfig';
 import ios_bundle from './bundle';
 import syncDevClientIos from './syncDevClient';
 
@@ -85,8 +85,7 @@ async function buildIpa(opts: { target?: string; install?: boolean; release?: bo
 }
 
 async function buildIosDevApp(install?: boolean, release?: boolean) {
-    const repoRoot = findRepoRoot(process.cwd());
-    const resolved = resolveDevAppPaths(repoRoot);
+    const resolved = resolveDevAppPaths(process.cwd());
     const iosDir = resolved.iosDir;
     const configuration = release ? 'Release' : 'Debug';
 
