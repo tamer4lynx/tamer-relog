@@ -243,6 +243,16 @@ Extensions are discovered via **lynx.ext.json** (RFC standard) or **tamer.json**
 
 ---
 
+## Limitations
+
+- **tamer-transports** — Fetch, WebSocket, and EventSource polyfills are not fully tested. Report issues on GitHub.
+- **t4l add** — Does not yet track installed versions for compatibility (Expo-style). Planned for a future release.
+- **tamer-router** — Designed for @lynx-js/react (Stack, Tabs, react-router). Other bindings (VueLynx, miso-lynx) can use native modules and tooling but not the router.
+- **Host dependencies** — Networking (fetch), font loading, and native modules depend on the Lynx host implementation.
+- **iOS development** — Requires macOS and Xcode for building and running.
+
+---
+
 ## Roadmap
 
 * [x] Fix iOS linking
