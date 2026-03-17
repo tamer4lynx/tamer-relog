@@ -59,6 +59,7 @@
     "android:build": "node dist/index.js android build",
     "android:build:install": "node dist/index.js android build --install",
     "docs:ci": "npm ci --ignore-scripts && npm run build --workspace=docs",
+    "prepare": "node -e \"const fs=require('fs');if(!fs.existsSync('dist/index.js'))require('child_process').execSync('npm run build',{stdio:'inherit'})\"",
     "prepublishOnly": "npm run build",
     "publish:all": "node scripts/publish-all.mjs"
   },
